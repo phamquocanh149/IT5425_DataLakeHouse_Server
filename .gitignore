@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+.venv/
+venv/
+ENV/
+
+# Testing
+.pytest_cache/
+.pytest_tmp/
+.coverage
+htmlcov/
+
+# Environment Variables
+.env
+.env.*
+!.env.example
+
+# Local Data Lake & Metadata (large runtime data)
+data_lake/**/*
+!data_lake/**/
+!data_lake/**/.gitkeep
+metadata/*
+!metadata/.gitkeep
+!data_lake/bronze/.gitkeep
+!data_lake/bronze/usdm/.gitkeep
+!data_lake/bronze/noaa/.gitkeep
+!data_lake/bronze/usgs/.gitkeep
+!data_lake/bronze/nldas/.gitkeep
+data_lake/silver/*
+!data_lake/silver/.gitkeep
+warehouse/*
+!warehouse/.gitkeep
+data_lake/temp/*
+!data_lake/temp/.gitkeep
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
