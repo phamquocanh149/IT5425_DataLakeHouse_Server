@@ -1,246 +1,150 @@
-# Climate Data Lake Platform — Phase 1: Server & Bronze Ingestion
+# Climate Data Lake Server ? Stage 1.5
 
-Hệ thống **Distributed Climate Data Lake Server** được thiết kế theo kiến trúc **Medallion (Bronze → Silver → Gold)** nhằm tiếp nhận, xác thực, và lưu trữ dữ liệu nghiên cứu hạn hán Hoa Kỳ (US Drought Monitor, NOAA, NASA NLDAS-2, USGS).
+**1 CLIENT ? 1 SERVER.** M?t physical Collector g?i USDM, NOAA, USGS v? NASA NLDAS
+qua HTTPX; Server x?c th?c, ph?n quy?n, gi? raw Bronze b?t bi?n v? ghi SQLite registry.
+Ch?a tri?n khai Historical Replay, downloader th?t ho?c Silver/Gold trong giai ?o?n n?y.
 
-- **Paper tham khảo**: [Nature Scientific Data (2024)](https://doi.org/10.1038/s41597-024-03202-6)
-- **Repository tham khảo**: [USDMdata](https://github.com/heplersa/USDMdata)
-
----
-
-## 1. Kiến trúc hệ thống & Luồng dữ liệu
-
-```
-[ Client 01: USDM / NOAA ]   ---+
-                                 +---> [ Tailscale / LAN HTTPS ] ---> [ Climate Data Lake Server (FastAPI) ]
-[ Client 02: NLDAS / USGS ]  ---+                                            |
-                                                                              +---> [ Streaming Chunk Upload (<= 20MB) ]
-                                                                              +---> [ In-flight SHA-256 Checksum ]
-                                                                              +---> [ Sanitize Filename / Anti-Path Traversal ]
-                                                                              +---> [ Deduplication Check ]
-                                                                              +---> [ Atomic Relocate to Bronze Layer ]
-                                                                              +---> [ Atomic JSON Metadata Record ]
+```mermaid
+flowchart LR
+    A[One physical Client: USDM / NOAA / USGS / NLDAS] --> B[Persistent pending queue + retry worker]
+    B -->|HTTPS Tailscale| C[FastAPI: authentication + source authorization]
+    C --> D[Immutable Bronze blobs]
+    C --> E[SQLite WAL: observations + revisions]
+    D --- F[Reconciliation]
+    E --- F
 ```
 
-### Cấu trúc lưu trữ Bronze Layer:
-```
-data_lake/bronze/{source}/ingestion_date=YYYY-MM-DD/sha256={checksum}/{original_filename}
-```
-- `source`: Danh mục nguồn dữ liệu hợp lệ (`usdm`, `noaa`, `usgs`, `nldas`).
-- `ingestion_date`: Ngày server tiếp nhận dữ liệu (UTC YYYY-MM-DD). Phân biệt với `source_date` (ngày quan trắc / phát hành).
-- `sha256`: Mã băm SHA-256 tính toán phía server, dùng để định danh phân vùng và chống trùng lặp dữ liệu.
+## C?i ??t tr?n Windows
 
----
+Python 3.11/3.12, filesystem c?c b?. N?u clone m?i, ??t hai repo c?nh nhau:
 
-## 2. Cấu trúc thư mục dự án
-
-```
-IT5425_DataLakeHouse_Server/
-├── server/
-│   ├── __init__.py           # Package init
-│   ├── main.py               # FastAPI application, routes (/health, /upload, /uploads)
-│   ├── config.py             # Pydantic Settings, đường dẫn lưu trữ, API keys map
-│   ├── ingestion.py          # Streaming chunk upload, SHA-256, atomic move, deduplication
-│   ├── metadata.py           # Atomic JSON metadata persistence & query manager
-│   └── security.py          # Xác thực API Key qua X-API-Key header, xác định client_id
-├── data_lake/
-│   ├── bronze/               # Bronze Lake - Dữ liệu thô nguyên bản không sửa đổi
-│   │   ├── usdm/
-│   │   ├── noaa/
-│   │   ├── usgs/
-│   │   └── nldas/
-│   ├── silver/               # Thư mục chuẩn bị cho giai đoạn chuyển đổi Parquet
-│   └── temp/                 # Thư mục tạm cho quá trình upload streaming
-├── warehouse/                # Thư mục chuẩn bị cho Gold Layer (DuckDB / dbt)
-├── metadata/                 # Lưu trữ metadata dạng JSON cho từng file được ingest
-├── scripts/
-│   └── test_upload.py        # CLI script gửi file thử nghiệm lên server & xem metadata
-├── tests/
-│   ├── __init__.py
-│   └── test_server.py        # Bộ kiểm thử pytest tự động (10 test cases)
-├── .env.example              # Cấu hình mẫu môi trường
-├── .env                      # Cấu hình biến môi trường cục bộ
-├── .gitignore                # Bỏ qua venv, cache, file tạm dữ liệu lớn
-├── pytest.ini                # Cấu hình pytest
-├── requirements.txt          # Danh sách thư viện Python cần thiết
-└── README.md                 # Tài liệu hướng dẫn chi tiết
-```
-
----
-
-## 3. Cài đặt và kích hoạt môi trường
-
-### Yêu cầu:
-- Windows 10/11 (Đã kiểm tra trên máy 16GB RAM)
-- Python 3.11 hoặc 3.12 (Hệ thống đã cài đặt Python 3.11.0)
-
-### Clone và tạo Virtual Environment:
-Mở PowerShell và chạy:
 ```powershell
-git clone https://github.com/phamquocanh149/IT5425_DataLakeHouse_Server.git
-cd IT5425_DataLakeHouse_Server
+git clone https://github.com/phamquocanh149/IT5425_DataLakeHouse_Server.git climate-platform
+git clone https://github.com/phamquocanh149/IT5425_DataLakeHouse_Client.git climate-collector
+cd climate-platform
 py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-Copy-Item .env.example .env
+# Ch? copy n?u ch?a c? .env; kh?ng ghi ?? c?u h?nh c?.
+if (!(Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
-Điền `CLIENT01_API_KEY`, `CLIENT02_API_KEY` và `ADMIN_API_KEY` trong `.env` bằng
-các khóa riêng biệt do bạn tạo; cấp khóa Client tương ứng cho từng máy.
-Các khóa mặc định để trống, nên API có xác thực sẽ từ chối request cho đến khi cấu hình.
-Không commit `.env`. Tests dùng khóa giả độc lập, không cần credentials thật.
-
-### Kích hoạt Virtual Environment (tùy chọn):
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-*(Nếu gặp lỗi PowerShell ExecutionPolicy, mở PowerShell thông thường và chạy: `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`)*
-
-### Cài đặt lại thư viện (nếu cần):
-```powershell
-pip install -r requirements.txt
-```
-
----
-
-## 4. Khởi chạy Server
-
-Chạy lệnh Uvicorn trên `127.0.0.1:8000` (theo đúng nguyên tắc bảo mật, không binding ra `0.0.0.0` khi chưa ủy quyền):
+?i?n `COLLECTOR_API_KEY` v? `ADMIN_API_KEY` b?ng hai secret kh?c nhau, kh?ng d?ng gi? tr?
+placeholder. Collector key ?nh x? sang `collector01`; Admin ch? qu?n tr?/xem metadata,
+kh?ng d?ng ?? upload. Client ch? nh?n Collector key. Kh?a tr?ng b? v? hi?u h?a;
+kh?a tr?ng ho?c placeholder khi?n Server t? ch?i c?u h?nh. Kh?ng commit `.env`.
+Bi?n m?i tr??ng ?u ti?n h?n `.env`; n?u m?y c? `DEBUG=release`, ??t `$env:DEBUG='False'`.
 
 ```powershell
-uvicorn server.main:app --host 127.0.0.1 --port 8000 --reload
+$env:DEBUG='False'
+.\.venv\Scripts\python.exe -m uvicorn server.main:app --host 127.0.0.1 --port 8000
 ```
 
-Truy cập kiểm tra:
-- **Health Check**: [http://127.0.0.1:8000/health](http://127.0.0.1:8000/health)
-- **Interactive API Docs (Swagger UI)**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-- **Alternative Docs (ReDoc)**: [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc)
+L?nh Uvicorn quy?t ??nh bind/port; `SERVER_HOST` trong `.env` kh?ng t? ??i tham s? CLI.
+Kh?ng t? m? port, ??i Firewall, bind `0.0.0.0` ho?c c?i d?ch v? h? ?i?u h?nh.
 
----
+## Authentication, authorization v? API
 
-## 5. Danh sách API Endpoints
+- Collector: upload b?n source trong `COLLECTOR_SOURCES`; ch? xem b?n ghi thu?c danh t?nh
+  c?a m?nh v? source ???c c?p quy?n. Kh?ng th? g?i form `client_id` ?? gi? m?o danh t?nh.
+- Admin: xem m?i b?n ghi, g?m d? li?u l?ch s? `client01/client02` v? tr?ng th?i recovery.
+- Kh?a thi?u/sai: 401. Kh?a ??ng nh?ng kh?ng ???c ph?p: 403. CORS m?c ??nh kh?ng m?.
+- `ENABLE_LEGACY_KEYS=False` m?c ??nh. Khi chuy?n ??i c? th? b?t r? r?ng ?? cho kh?a c?
+  ho?t ??ng: client01 ch? USDM/NOAA, client02 ch? USGS/NLDAS. Kh?ng s?a client_id l?ch s?.
 
-### 1. `GET /health`
-- **Mục đích**: Kiểm tra tình trạng hoạt động của server.
-- **Xác thực**: Không yêu cầu.
-- **Response mẫu**:
-  ```json
-  {
-    "status": "ok",
-    "service": "climate-data-server"
-  }
-  ```
+| Endpoint | Contract |
+|---|---|
+| GET /health | Public: status=ok, service=climate-data-server |
+| POST /upload | X-API-Key; multipart file, source, source_date; dataset_key t?y ch?n |
+| GET /uploads | X-API-Key; filter source t?y ch?n; l?c theo quy?n |
 
-### 2. `POST /upload`
-- **Mục đích**: Nhận file dữ liệu khí hậu bằng `multipart/form-data`.
-- **Headers**:
-  - `X-API-Key: <client_api_key>` (Bắt buộc).
-- **Form Data**:
-  - `file`: File nhị phân/văn bản (tối đa 20MB).
-  - `source`: Một trong các giá trị: `usdm`, `noaa`, `usgs`, `nldas`.
-  - `source_date`: Ngày quan trắc định dạng `YYYY-MM-DD`.
-- **Response mẫu (Upload mới thành công)**:
-  ```json
-  {
-    "status": "VERIFIED",
-    "message": "File ingested and verified successfully into Bronze Data Lake",
-    "metadata": {
-      "file_id": "file_10490607d26742b5",
-      "source": "usdm",
-      "source_date": "2021-06-22",
-      "client_id": "client01",
-      "original_filename": "usdm_sample.csv",
-      "stored_path": "data_lake/bronze/usdm/ingestion_date=2026-10-09/sha256=e0d9f2f.../usdm_sample.csv",
-      "size_bytes": 310,
-      "sha256": "e0d9f2f7bcc04f8a509fe1c2fb75d3dc61563529625f69b100612bd4f653f63a",
-      "received_at": "2026-10-09T17:01:56Z",
-      "status": "VERIFIED"
-    }
-  }
-  ```
-- **Response mẫu (Phát hiện trùng lặp Checksum)**:
-  ```json
-  {
-    "status": "DUPLICATE",
-    "message": "File with identical SHA-256 already exists in Bronze Data Lake",
-    "metadata": { ... }
-  }
-  ```
+Field c? v? HTTP 200 `VERIFIED` / `DUPLICATE` gi? nguy?n. Response metadata th?m
+`dataset_key`, `revision`, `previous_file_id`, `is_current`, `error_message`.
+`VERIFIED` x?c nh?n Bronze + registry ?? commit, kh?ng c? ngh?a Silver/Gold ?? x? l?.
+Chi ti?t: [API contract](docs/API_CONTRACT.md).
 
-### 3. `GET /uploads`
-- **Mục đích**: Lấy danh sách file đã tiếp nhận và metadata.
-- **Headers**:
-  - `X-API-Key: <client_api_key>` (Bắt buộc).
-- **Query Params**:
-  - `source`: Lọc theo nguồn (tùy chọn: `usdm`, `noaa`, `usgs`, `nldas`).
+## Identity, revision v? l?u tr?
 
----
+- Physical content identity: SHA-256. C?ng n?i dung d?ng l?i blob v?t l? sau ki?m tra hash.
+- Logical identity: `(source, source_date, dataset_key, sha256)` c? UNIQUE constraint.
+- `dataset_key` ?n ??nh theo s?n ph?m/tr?m/ch? s?; thi?u th? d?ng basename g?c (ch?a sanitize).
+  Tr??ng n?y l? metadata, kh?ng ???c d?ng ?? x?y ???ng d?n raw.
+- Kh?c ng?y/source/key t?o observation m?i d? hash gi?ng nhau. ??i n?i dung t?o revision,
+  li?n k?t version tr??c; ch? m?t revision `is_current=1`. G?i l?i revision c? tr? DUPLICATE
+  c?a revision ??, kh?ng ??a n? th?nh current.
+- Dataset thu?c danh t?nh kh?c b? 403, tr?nh l? metadata qua duplicate. Khi th?m Collector
+  m?i c?n c?p ngu?n/namespace dataset ph? h?p, kh?ng t? nh?n ownership c?a l?ch s?.
 
-## 6. Hướng dẫn chạy thử nghiệm Client Upload
+Raw m?i: `data_lake/bronze/<source ??u ti?n>/sha256=<hash>/payload`. T?n g?c n?m trong
+registry. Blob chia s? gi?a observation; ???ng d?n c? th? thu?c source c?a l?n g?i ??u.
+Raw c? gi? nguy?n ???ng d?n. Registry: `metadata/ingestion.sqlite3`, schema version 1,
+b?ng `content_blobs`, `observations`, `recovery_reports`; WAL, synchronous FULL,
+transaction BEGIN IMMEDIATE v? unique indexes ch?ng race. Kh?ng ??t SQLite tr?n SMB/NFS.
+Gi?i h?n m?c ??nh **20 MiB**, hash/copy theo chunk, kh?ng load nguy?n file v?o RAM.
 
-Script tiện ích `scripts/test_upload.py` được cung cấp sẵn để kiểm tra gửi dữ liệu từ dòng lệnh:
+## Migration v? recovery
 
-### 1. Upload một file mẫu tự tạo:
-```powershell
-python scripts\test_upload.py --source usdm --source-date 2021-06-22
-```
-
-### 2. Upload một file có sẵn từ đĩa:
-```powershell
-python scripts\test_upload.py --file "path\to\climate_data.zip" --source noaa --source-date 2021-06-23
-```
-
-### 3. Kiểm tra tính năng Deduplication:
-Chạy lại cùng một lệnh trên. Server sẽ tự động phát hiện mã băm SHA-256 trùng khớp, trả về trạng thái `DUPLICATE` và không tạo bản sao thừa trên đĩa.
-
-### 4. Truy vấn danh sách các file đã upload:
-```powershell
-python scripts\test_upload.py --list --source usdm
-```
-
----
-
-## 7. Chạy kiểm thử tự động (pytest)
-
-Toàn bộ 10 kịch bản kiểm thử bắt buộc đã được cài đặt và vượt qua 100%:
+D?ng nh?n upload trong l?c chuy?n ??i l?n ??u ?? ki?m tra k?t qu? r? r?ng:
 
 ```powershell
-pytest
+.\.venv\Scripts\python.exe scripts/migrate_metadata.py
+.\.venv\Scripts\python.exe scripts/reconcile_storage.py --checksum
+# T?y ch?n: ch? s?a tr?ng th?i DB sau ki?m tra, kh?ng s?a/x?a raw.
+.\.venv\Scripts\python.exe scripts/reconcile_storage.py --checksum --repair-status
 ```
 
-**Các kịch bản kiểm thử:**
-1. Khởi động server & kiểm tra `GET /health` trả về HTTP 200.
-2. Upload file CSV hợp lệ thành công và kiểm tra lưu trữ Bronze.
-3. Mã SHA-256 của file đã lưu khớp chính xác với file gốc.
-4. Metadata JSON được tạo đầy đủ và chính xác với trạng thái `VERIFIED`.
-5. Upload lại file giống hệt trả về `DUPLICATE`, không tạo file trùng lặp.
-6. Từ chối nguồn dữ liệu không hợp lệ (`source != usdm/noaa/usgs/nldas`).
-7. Từ chối định dạng ngày `source_date` sai quy chuẩn `YYYY-MM-DD`.
-8. Từ chối file vượt quá giới hạn 20MB (HTTP 413).
-9. Từ chối API Key thiếu hoặc không hợp lệ (HTTP 401).
-10. Chống tấn công Path Traversal (`../../filename`), đảm bảo file không thoát khỏi thư mục Bronze.
-11. Ngắt kết nối giữa chừng tự động dọn dẹp file tạm và không tạo metadata `VERIFIED`.
-12. Truy vấn `GET /uploads` có xác thực và lọc theo source.
+Migration backup m?i JSON ngu?n trong `metadata/backups/<timestamp-id>/`, ki?m tra file,
+size/hash, import transactional, c? th? ch?y l?i. Gi? JSON v? file raw; b?o c?o l?i/thi?u
+file, kh?ng suy ?o?n observation b? thi?u. SQLite l? source of truth cho metadata m?i.
+D? li?u c? ch?a migrate s? kh?ng xu?t hi?n trong GET /uploads.
 
----
+Reconciliation ph?t hi?n temporary files, orphan Bronze, missing/corrupt/unsafe paths;
+l?u b?o c?o v?o SQLite. `--repair-status` ch? ??nh d?u MISSING/CORRUPT ho?c kh?i ph?c VERIFIED
+sau khi file th?c t? kh?p. Kh?ng t? x?a temp (c? th? ?ang upload), kh?ng t? g?n metadata
+cho orphan. Retry upload c? th? nh?n l?i orphan ??ng hash v? commit observation an to?n.
+N?u registry l?i sau ghi raw, request kh?ng tr? VERIFIED; file raw c?n ?? ph?c h?i.
+Exit code 1 c?a maintenance cho bi?t c? l?i/b?t nh?t c?n xem b?o c?o.
 
-## 8. Hướng dẫn kết nối Client 01 & Client 02 qua Tailscale Serve
+## Tests v? demo
 
-Để hai máy Client truyền dữ liệu an toàn đến Server Windows mà **không cần**:
-- Mở port modem / router (Port Forwarding),
-- Thay đổi cấu hình Windows Firewall,
-- Expose server ra public Internet qua `0.0.0.0`:
+```powershell
+$env:DEBUG='False'
+.\.venv\Scripts\python.exe -m pytest -q
+# Ch? unit tests:
+.\.venv\Scripts\python.exe -m pytest tests/test_server.py tests/test_stage15.py -q
+# Ch? HTTP integration (c?n repo Client c?nh Server ho?c CLIENT_REPO_PATH):
+$env:CLIENT_REPO_PATH=(Resolve-Path ..\climate-collector).Path
+.\.venv\Scripts\python.exe -m pytest tests/integration -q
+```
 
-### Quy trình đề xuất:
-1. Cài đặt [Tailscale](https://tailscale.com/) trên cả 3 máy (Server, Client 01, Client 02) và đăng nhập cùng một Tailnet.
-2. Trên máy Server Windows, server giữ nguyên lắng nghe tại `127.0.0.1:8000`.
-3. Bật tính năng **Tailscale Serve** trên máy Server:
-   ```powershell
-   tailscale serve --bg 8000
-   ```
-   Tailscale sẽ cung cấp một tên miền nội bộ có chứng chỉ SSL HTTPS hợp lệ, ví dụ:
-   `https://windows-server.tailnet-xyz.ts.net`
-4. Trên Client 01 & Client 02, cấu hình URL gửi dữ liệu:
-   - Client 01 (USDM, NOAA) dùng khóa `CLIENT01_API_KEY` bạn đã cấu hình.
-   - Client 02 (NLDAS-2, USGS) dùng khóa `CLIENT02_API_KEY` bạn đã cấu hình.
-   - Gửi HTTPS tới: `https://windows-server.tailnet-xyz.ts.net/upload`
-5. Kết nối qua mạng Tailscale được mã hóa; quyền truy cập phụ thuộc cấu hình Tailnet và API key.
+Integration b?t bu?c d?ng Uvicorn subprocess v? HTTP loopback th?t: A upload, B duplicate,
+C kh?c ng?y, D offline/restart/worker, E c? b?n ngu?n, F hai Client process ??ng th?i.
+M?i storage/DB/credentials l? test ri?ng, kh?ng d?ng d? li?u c?a ng??i d?ng.
+Xem [demo 5?7 ph?t](docs/STAGE_1_5_DEMO.md) v? [b?o c?o ki?m th?](docs/VALIDATION.md).
+
+## Hai m?y Windows qua Tailscale
+
+Gi? Uvicorn ? 127.0.0.1. Sau khi hai m?y ? c?ng tailnet v? ???c c?p quy?n truy c?p,
+ng??i v?n h?nh b?t HTTPS certificates c?a tailnet v? ch?y tr?n Server:
+
+```powershell
+tailscale serve --bg 8000
+```
+
+Client d?ng URL HTTPS do l?nh tr? v?, kh?ng d?ng localhost c?a m?y Client; kh?ng d?ng
+Admin key, kh?ng t?t TLS verification. Windows c? th? c?n terminal Administrator ??
+ch?y Serve. Ch? h??ng d?n, t?c v? n?y kh?ng t? th?c thi c?u h?nh m?ng. Tham kh?o
+[Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve) v?
+[v? d? Windows](https://tailscale.com/docs/reference/examples/serve).
+
+## Gi?i h?n v? b??c ti?p theo
+
+Demo d?ng m?t Server process, SQLite local, t?c v? filesystem/registry ??ng b? c? th?
+ch?n event loop trong th?i gian ng?n; GET /uploads ch?a ph?n trang. Worker Client tu?n t?,
+kh?ng ph?i Windows Service. Reconciliation b?o c?o an to?n, kh?ng kh?i ph?c bytes b? m?t.
+Schema v1 ch?a c? migration t?i version t??ng lai; version l? b? t? ch?i.
+Ch?a ki?m th? tr?n hai m?y v?t l? ho?c qua Tailscale. JSON l?ch s? tr?n m?y n?y ch?a ???c
+migrate t? ??ng v? kh?a local ch?a t? chuy?n ??i. C?n v?n h?nh migration v? c?p Collector key.
+
+Stage 2: b? sung Historical Replay v?i dataset_key ?n ??nh, checkpoint theo t?ng ngu?n,
+v? live collectors. Stage 3: ??c observation current/VERIFIED ?? t?o Silver/Gold trong
+pipeline ri?ng; kh?ng s?a Bronze. Hai stage n?y ch?a ???c tri?n khai trong nhi?m v? n?y.

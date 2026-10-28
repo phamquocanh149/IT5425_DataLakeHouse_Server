@@ -29,6 +29,8 @@ def setup_test_environment(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "CLIENT01_API_KEY", VALID_KEY_CLIENT01)
     monkeypatch.setattr(settings, "CLIENT02_API_KEY", VALID_KEY_CLIENT02)
     monkeypatch.setattr(settings, "ADMIN_API_KEY", "test-only-admin")
+    monkeypatch.setattr(settings, "COLLECTOR_API_KEY", "test-only-collector")
+    monkeypatch.setattr(settings, "ENABLE_LEGACY_KEYS", True)
 
     # Monkeypatch settings properties
     monkeypatch.setattr(settings, "BASE_DIR", test_base)
@@ -86,9 +88,8 @@ def test_upload_valid_csv(client, setup_test_environment):
     assert stored_path.read_bytes() == csv_content
 
     # Verify metadata JSON file on disk
-    metadata_json_path = setup_test_environment / "metadata" / f"{meta['file_id']}.json"
-    assert metadata_json_path.exists()
-    disk_metadata = json.loads(metadata_json_path.read_text(encoding="utf-8"))
+    assert metadata_manager.db_path.exists()
+    disk_metadata = metadata_manager.get_by_file_id(meta["file_id"]).model_dump()
     assert disk_metadata["sha256"] == expected_sha256
     assert disk_metadata["status"] == "VERIFIED"
 
@@ -114,7 +115,7 @@ def test_deduplication_on_identical_upload(client):
         "/upload",
         headers={"X-API-Key": VALID_KEY_CLIENT01},
         data={"source": "noaa", "source_date": "2021-06-22"},
-        files={"file": ("precip_duplicate.txt", data_bytes, "text/plain")},
+        files={"file": ("precip.txt", data_bytes, "text/plain")},
     )
     assert res2.status_code == 200
     res2_json = res2.json()

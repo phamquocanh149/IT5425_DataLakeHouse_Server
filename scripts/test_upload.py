@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 DEFAULT_SERVER_URL = "http://127.0.0.1:8000"
-DEFAULT_CLIENT01_KEY = os.getenv("CLIENT01_API_KEY", "")
+DEFAULT_COLLECTOR_KEY = os.getenv("COLLECTOR_API_KEY", "")
 
 
 def compute_local_sha256(filepath: Path) -> str:
@@ -58,7 +58,7 @@ def main():
     )
     parser.add_argument(
         "--api-key",
-        default=DEFAULT_CLIENT01_KEY,
+        default=DEFAULT_COLLECTOR_KEY,
         help="Client API Key for X-API-Key header",
     )
     parser.add_argument(
@@ -69,7 +69,7 @@ def main():
 
     args = parser.parse_args()
     if not args.api_key:
-        parser.error("Set CLIENT01_API_KEY in .env or the environment, or supply --api-key")
+        parser.error("Set COLLECTOR_API_KEY in .env or the environment, or supply --api-key")
     headers = {"X-API-Key": args.api_key}
 
     # If --list flag is provided, fetch list of uploaded files

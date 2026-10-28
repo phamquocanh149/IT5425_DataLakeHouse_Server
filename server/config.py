@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Dict, Set
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
+from pydantic import Field, model_validator
 
 
 class Settings(BaseSettings):
@@ -30,9 +30,24 @@ class Settings(BaseSettings):
     ALLOWED_SOURCES: Set[str] = {"usdm", "noaa", "usgs", "nldas"}
 
     # Client API Key Credentials
+    COLLECTOR_API_KEY: str = ""
+    COLLECTOR_SOURCES: Set[str] = {"usdm", "noaa", "usgs", "nldas"}
+    ENABLE_LEGACY_KEYS: bool = False
     CLIENT01_API_KEY: str = ""
     CLIENT02_API_KEY: str = ""
     ADMIN_API_KEY: str = ""
+
+    @model_validator(mode="after")
+    def validate_keys(self):
+        keys = [self.COLLECTOR_API_KEY, self.ADMIN_API_KEY]
+        if self.ENABLE_LEGACY_KEYS:
+            keys += [self.CLIENT01_API_KEY, self.CLIENT02_API_KEY]
+        active = [key for key in keys if key]
+        if len(active) != len(set(active)):
+            raise ValueError("Configured API keys must be distinct")
+        if any(key.startswith("REPLACE_WITH") for key in active):
+            raise ValueError("Replace placeholder API keys before starting Server")
+        return self
 
     @property
     def bronze_path(self) -> Path:
@@ -58,9 +73,11 @@ class Settings(BaseSettings):
     def api_keys(self) -> Dict[str, str]:
         """Maps raw secret API key string to canonical client_id."""
         mapping: Dict[str, str] = {}
-        if self.CLIENT01_API_KEY:
+        if self.COLLECTOR_API_KEY:
+            mapping[self.COLLECTOR_API_KEY] = "collector01"
+        if self.ENABLE_LEGACY_KEYS and self.CLIENT01_API_KEY:
             mapping[self.CLIENT01_API_KEY] = "client01"
-        if self.CLIENT02_API_KEY:
+        if self.ENABLE_LEGACY_KEYS and self.CLIENT02_API_KEY:
             mapping[self.CLIENT02_API_KEY] = "client02"
         if self.ADMIN_API_KEY:
             mapping[self.ADMIN_API_KEY] = "admin"

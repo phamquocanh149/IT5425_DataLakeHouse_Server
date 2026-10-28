@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from server.config import settings
 from server.ingestion import IngestionResponse, process_file_upload
 from server.metadata import FileMetadata, metadata_manager
-from server.security import get_current_client
+from server.security import get_current_client, authorize_upload, allowed_sources
 
 # Configure server logging
 logging.basicConfig(
@@ -24,6 +24,8 @@ async def lifespan(app: FastAPI):
     """Lifecycle event to initialize directories and check configuration."""
     logger.info("Initializing Climate Data Lake Server...")
     settings.ensure_directories()
+    with metadata_manager.connection():
+        pass
     logger.info(
         "Storage ready. Bronze path: %s | Active clients: %s",
         settings.bronze_path,
@@ -41,13 +43,7 @@ app = FastAPI(
 )
 
 # CORS setup (allow local development if needed)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# No browser cross-origin access is needed by the HTTPX client.
 
 
 @app.get(
@@ -76,6 +72,7 @@ async def upload_dataset(
     source: str = Form(..., description="Data source: usdm, noaa, usgs, or nldas"),
     source_date: str = Form(..., description="Observation or publication date (YYYY-MM-DD)"),
     client_id: str = Depends(get_current_client),
+    dataset_key: Optional[str] = Form(None),
 ):
     """Accepts multipart/form-data upload, verifies integrity, deduplicates by SHA-256,
 
@@ -88,11 +85,13 @@ async def upload_dataset(
         source,
         source_date,
     )
+    authorize_upload(client_id, source)
     result = await process_file_upload(
         upload_file=file,
         source=source,
         source_date=source_date,
         client_id=client_id,
+        dataset_key=dataset_key,
     )
     return result
 
@@ -109,4 +108,9 @@ async def list_uploads(
 ):
     """Returns the list of all verified ingested files with metadata. Requires client authentication."""
     logger.info("Client '%s' requested upload list (source_filter=%s)", client_id, source)
-    return metadata_manager.list_all(source_filter=source)
+    if client_id != "admin" and source and source not in allowed_sources(client_id):
+        from fastapi import HTTPException
+        raise HTTPException(403, "Source is not authorized")
+    return metadata_manager.list_all(source_filter=source,
+        client_id=None if client_id == "admin" else client_id,
+        sources=None if client_id == "admin" else allowed_sources(client_id))

@@ -95,6 +95,7 @@ async def process_file_upload(
     source: str,
     source_date: str,
     client_id: str,
+    dataset_key: Optional[str] = None,
 ) -> IngestionResponse:
     """Process file upload with chunked streaming, SHA-256 calculation, size enforcement,
 
@@ -149,86 +150,15 @@ async def process_file_upload(
 
         calculated_sha256 = hasher.hexdigest()
 
-        # Check for duplicate file by SHA-256
-        existing_record = metadata_manager.find_by_sha256(calculated_sha256)
-        if existing_record:
-            logger.info(
-                "Duplicate file detected: sha256=%s already exists as file_id=%s (client=%s)",
-                calculated_sha256,
-                existing_record.file_id,
-                client_id,
-            )
-            # Remove temp file
-            if temp_path.exists():
-                temp_path.unlink()
-
-            return IngestionResponse(
-                status="DUPLICATE",
-                message="File with identical SHA-256 already exists in Bronze Data Lake",
-                metadata=existing_record,
-            )
-
-        # Prepare bronze target partition directory:
-        # data_lake/bronze/{source}/ingestion_date=YYYY-MM-DD/sha256=<checksum>/original_filename
-        now_utc = datetime.now(timezone.utc)
-        ingestion_date = now_utc.strftime("%Y-%m-%d")
-
-        target_dir = (
-            settings.bronze_path
-            / valid_source
-            / f"ingestion_date={ingestion_date}"
-            / f"sha256={calculated_sha256}"
-        )
-        target_dir.mkdir(parents=True, exist_ok=True)
-        final_file_path = target_dir / safe_filename
-
-        # Prevent escaping bronze directory (path traversal check)
-        try:
-            final_file_path.resolve().relative_to(settings.bronze_path.resolve())
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Security violation: destination path escapes Bronze storage",
-            )
-
-        # Atomically move temp file to Bronze target path
-        os.replace(temp_path, final_file_path)
-
-        # Prepare metadata
-        relative_stored_path = str(final_file_path.relative_to(settings.BASE_DIR)).replace("\\", "/")
-        file_id = f"file_{uuid.uuid4().hex[:16]}"
-        received_at_iso = now_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
-
-        metadata = FileMetadata(
-            file_id=file_id,
-            source=valid_source,
-            source_date=valid_source_date,
-            client_id=client_id,
-            original_filename=safe_filename,
-            stored_path=relative_stored_path,
-            size_bytes=total_bytes,
-            sha256=calculated_sha256,
-            received_at=received_at_iso,
-            status="VERIFIED",
-        )
-
-        # Atomically record metadata
-        metadata_manager.save_metadata(metadata)
-
-        logger.info(
-            "Upload VERIFIED: file_id=%s, source=%s, sha256=%s, bytes=%d, client=%s",
-            file_id,
-            valid_source,
-            calculated_sha256,
-            total_bytes,
-            client_id,
-        )
-
-        return IngestionResponse(
-            status="VERIFIED",
-            message="File ingested and verified successfully into Bronze Data Lake",
-            metadata=metadata,
-        )
+        key = dataset_key if dataset_key is not None else Path((upload_file.filename or "upload.bin").replace("\\", "/")).name
+        if not key.strip() or len(key) > 512 or any(ord(c) < 32 for c in key):
+            raise HTTPException(400, "Invalid dataset_key")
+        metadata, duplicate = metadata_manager.register_upload(
+            temp_path, valid_source, valid_source_date, key, safe_filename,
+            client_id, calculated_sha256, total_bytes)
+        return IngestionResponse(status="DUPLICATE" if duplicate else "VERIFIED",
+            message="Logical observation already exists" if duplicate else "Bronze and registry committed",
+            metadata=metadata)
 
     except Exception:
         # Ensure cleanup of any temp file
