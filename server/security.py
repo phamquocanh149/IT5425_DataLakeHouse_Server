@@ -37,8 +37,11 @@ async def get_current_client(api_key: Optional[str] = Security(API_KEY_HEADER)) 
 
 
 def allowed_sources(client_id):
-    return {"collector01": settings.COLLECTOR_SOURCES,
-            "client01": {"usdm", "noaa"}, "client02": {"usgs", "nldas"}}.get(client_id, set())
+    return {
+        "collector01": settings.COLLECTOR_SOURCES,
+        "client01": {"usdm", "noaa"},
+        "client02": {"usgs", "nldas"},
+    }.get(client_id, set())
 
 
 def authorize_upload(client_id, source):

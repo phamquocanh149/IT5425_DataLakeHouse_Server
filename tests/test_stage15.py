@@ -6,19 +6,30 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
-from fastapi import HTTPException, UploadFile
+from fastapi import UploadFile
 
 from server.config import Settings, settings
 from server.ingestion import process_file_upload
-from server.metadata import metadata_manager, file_hash
+from server.metadata import metadata_manager
 from server.maintenance import migrate_json, reconcile
-from tests.test_server import setup_test_environment, client
+from tests.test_server import setup_test_environment, client  # noqa: F401
 
 
-def send(client, source="usdm", day="2021-06-22", content=b"mock climate data", key="station1", api_key="test-only-collector", **extra):
-    return client.post("/upload", headers={"X-API-Key": api_key},
+def send(
+    client,
+    source="usdm",
+    day="2021-06-22",
+    content=b"mock climate data",
+    key="station1",
+    api_key="test-only-collector",
+    **extra,
+):
+    return client.post(
+        "/upload",
+        headers={"X-API-Key": api_key},
         data={"source": source, "source_date": day, "dataset_key": key, **extra},
-        files={"file": ("sample.csv", content, "text/csv")})
+        files={"file": ("sample.csv", content, "text/csv")},
+    )
 
 
 def test_auth_and_all_sources(client, monkeypatch):
@@ -30,7 +41,10 @@ def test_auth_and_all_sources(client, monkeypatch):
     assert send(client, api_key="test-only-admin").status_code == 403
     monkeypatch.setattr(settings, "COLLECTOR_SOURCES", {"usdm"})
     assert send(client, "noaa").status_code == 403
-    assert client.get("/uploads?source=noaa", headers={"X-API-Key": "test-only-collector"}).status_code == 403
+    assert (
+        client.get("/uploads?source=noaa", headers={"X-API-Key": "test-only-collector"}).status_code
+        == 403
+    )
 
 
 def test_metadata_visibility(client):
@@ -43,9 +57,18 @@ def test_metadata_visibility(client):
 
 
 def test_key_validation(monkeypatch):
+    for field in ("COLLECTOR_API_KEY", "ADMIN_API_KEY"):
+        with pytest.raises(ValueError, match="required"):
+            Settings(_env_file=None, **{field: " "}, DEBUG=False)
     with pytest.raises(ValueError, match="distinct"):
         Settings(_env_file=None, COLLECTOR_API_KEY="same", ADMIN_API_KEY="same", DEBUG=False)
-    config = Settings(_env_file=None, COLLECTOR_API_KEY="collector", ADMIN_API_KEY="admin", CLIENT01_API_KEY="legacy", DEBUG=False)
+    config = Settings(
+        _env_file=None,
+        COLLECTOR_API_KEY="collector",
+        ADMIN_API_KEY="admin",
+        CLIENT01_API_KEY="legacy",
+        DEBUG=False,
+    )
     assert "legacy" not in config.api_keys
 
 
@@ -71,7 +94,16 @@ def test_observations_revisions_and_blobs(client):
 
 def test_concurrent_identical_requests(setup_test_environment):
     def upload(_):
-        return asyncio.run(process_file_upload(UploadFile(filename="same.csv", file=io.BytesIO(b"same")), "usgs", "2021-06-22", "collector01", "same"))
+        return asyncio.run(
+            process_file_upload(
+                UploadFile(filename="same.csv", file=io.BytesIO(b"same")),
+                "usgs",
+                "2021-06-22",
+                "collector01",
+                "same",
+            )
+        )
+
     with ThreadPoolExecutor(max_workers=4) as pool:
         results = list(pool.map(upload, range(4)))
     assert sorted(r.status for r in results) == ["DUPLICATE"] * 3 + ["VERIFIED"]
@@ -80,8 +112,10 @@ def test_concurrent_identical_requests(setup_test_environment):
 
 def test_registry_failure_and_orphan_recovery(client, monkeypatch):
     original = metadata_manager._insert
+
     def fail(*args):
         raise sqlite3.OperationalError("simulated DB failure")
+
     monkeypatch.setattr(metadata_manager, "_insert", fail)
     with pytest.raises(sqlite3.OperationalError):
         send(client)
@@ -98,8 +132,10 @@ def test_registry_failure_and_orphan_recovery(client, monkeypatch):
 
 def test_file_publish_failure_never_verifies(client, monkeypatch):
     import server.metadata as registry
+
     def fail(*args):
         raise OSError("simulated disk failure")
+
     monkeypatch.setattr(registry.os, "replace", fail)
     with pytest.raises(OSError):
         send(client)
@@ -109,11 +145,14 @@ def test_file_publish_failure_never_verifies(client, monkeypatch):
 
 def test_registry_commit_failure_rolls_back(client, monkeypatch):
     real_connect = sqlite3.connect
+
     class FailingCommit(sqlite3.Connection):
         def commit(self):
             raise sqlite3.OperationalError("simulated commit failure")
+
     def connect(*args, **kwargs):
         return real_connect(*args, **kwargs, factory=FailingCommit)
+
     with monkeypatch.context() as patch:
         patch.setattr(sqlite3, "connect", connect)
         with pytest.raises(sqlite3.OperationalError):
@@ -141,11 +180,21 @@ def test_reconcile_missing_corrupt_and_temporary(client):
 
 def test_migration_backup_idempotency_and_missing(setup_test_environment):
     import hashlib
+
     raw = settings.bronze_path / "usdm" / "old.csv"
     raw.write_bytes(b"legacy")
-    record = dict(file_id="legacy_1", client_id="client01", source="usdm", source_date="2020-01-01",
-        original_filename="old.csv", stored_path=raw.relative_to(settings.BASE_DIR).as_posix(),
-        sha256=hashlib.sha256(b"legacy").hexdigest(), size_bytes=6, received_at="2020-01-01T00:00:00Z", status="VERIFIED")
+    record = dict(
+        file_id="legacy_1",
+        client_id="client01",
+        source="usdm",
+        source_date="2020-01-01",
+        original_filename="old.csv",
+        stored_path=raw.relative_to(settings.BASE_DIR).as_posix(),
+        sha256=hashlib.sha256(b"legacy").hexdigest(),
+        size_bytes=6,
+        received_at="2020-01-01T00:00:00Z",
+        status="VERIFIED",
+    )
     path = metadata_manager.metadata_dir / "legacy.json"
     path.write_text(json.dumps(record), encoding="utf-8")
     bad = dict(record, file_id="legacy_2", stored_path="data_lake/bronze/usdm/missing.csv")
@@ -160,7 +209,11 @@ def test_migration_backup_idempotency_and_missing(setup_test_environment):
 
 
 def test_old_multipart_fallback_and_new_key(client):
-    response = client.post("/upload", headers={"X-API-Key": "test-only-collector"},
-        data={"source": "noaa", "source_date": "2021-06-22"}, files={"file": ("old.csv", b"old")})
+    response = client.post(
+        "/upload",
+        headers={"X-API-Key": "test-only-collector"},
+        data={"source": "noaa", "source_date": "2021-06-22"},
+        files={"file": ("old.csv", b"old")},
+    )
     assert response.status_code == 200 and response.json()["metadata"]["dataset_key"] == "old.csv"
     assert send(client, key="   ").status_code == 400

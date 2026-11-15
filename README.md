@@ -1,150 +1,190 @@
-# Climate Data Lake Server ? Stage 1.5
+﻿# Data LakeHouse — Server
 
-**1 CLIENT ? 1 SERVER.** M?t physical Collector g?i USDM, NOAA, USGS v? NASA NLDAS
-qua HTTPX; Server x?c th?c, ph?n quy?n, gi? raw Bronze b?t bi?n v? ghi SQLite registry.
-Ch?a tri?n khai Historical Replay, downloader th?t ho?c Silver/Gold trong giai ?o?n n?y.
+Server nhận file từ Client qua FastAPI, kiểm tra SHA-256, lưu raw vào MinIO Bronze và quản lý observation/revision bằng SQLite.
 
-```mermaid
-flowchart LR
-    A[One physical Client: USDM / NOAA / USGS / NLDAS] --> B[Persistent pending queue + retry worker]
-    B -->|HTTPS Tailscale| C[FastAPI: authentication + source authorization]
-    C --> D[Immutable Bronze blobs]
-    C --> E[SQLite WAL: observations + revisions]
-    D --- F[Reconciliation]
-    E --- F
+Repo tương ứng: [Client](https://github.com/phamquocanh149/IT5425_DataLakeHouse_Client).
+
+```text
+Máy Client: HTTPX + hàng đợi
+    │ HTTPS /upload + X-API-Key
+    ▼
+Máy Server: FastAPI → MinIO Bronze
+                  └→ SQLite trên persistent volume
 ```
 
-## C?i ??t tr?n Windows
+Chỉ Bronze hoạt động thật. Silver, Gold và Warehouse được tạo sẵn, chưa có ETL. Client không truy cập MinIO trực tiếp; GitHub chứa code, không trung chuyển dữ liệu.
 
-Python 3.11/3.12, filesystem c?c b?. N?u clone m?i, ??t hai repo c?nh nhau:
+## 1. Chuẩn bị và clone
+
+Cần Git, Docker Engine chạy **Linux/amd64**, Docker Compose từ **2.24.4**. Trên Windows dùng Docker Desktop với Linux containers. Windows Server OS cần Docker Engine/Compose trong máy ảo Linux. Python 3.11 chỉ cần cho công cụ native và tests, không bắt buộc khi chạy toàn bộ Server bằng Docker.
+
+Các lệnh bên dưới dùng PowerShell:
 
 ```powershell
 git clone https://github.com/phamquocanh149/IT5425_DataLakeHouse_Server.git climate-platform
-git clone https://github.com/phamquocanh149/IT5425_DataLakeHouse_Client.git climate-collector
 cd climate-platform
-py -3.11 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-# Ch? copy n?u ch?a c? .env; kh?ng ghi ?? c?u h?nh c?.
+docker version
+docker compose version
 if (!(Test-Path .env)) { Copy-Item .env.example .env }
+notepad .env
 ```
 
-?i?n `COLLECTOR_API_KEY` v? `ADMIN_API_KEY` b?ng hai secret kh?c nhau, kh?ng d?ng gi? tr?
-placeholder. Collector key ?nh x? sang `collector01`; Admin ch? qu?n tr?/xem metadata,
-kh?ng d?ng ?? upload. Client ch? nh?n Collector key. Kh?a tr?ng b? v? hi?u h?a;
-kh?a tr?ng ho?c placeholder khi?n Server t? ch?i c?u h?nh. Kh?ng commit `.env`.
-Bi?n m?i tr??ng ?u ti?n h?n `.env`; n?u m?y c? `DEBUG=release`, ??t `$env:DEBUG='False'`.
+Nếu đã có checkout/dữ liệu, giữ nguyên `.env` và tên Compose project. Không tạo project mới rồi hiểu nhầm volume mới trống là mất dữ liệu.
 
-```powershell
-$env:DEBUG='False'
-.\.venv\Scripts\python.exe -m uvicorn server.main:app --host 127.0.0.1 --port 8000
-```
+## 2. Điền cấu hình `.env`
 
-L?nh Uvicorn quy?t ??nh bind/port; `SERVER_HOST` trong `.env` kh?ng t? ??i tham s? CLI.
-Kh?ng t? m? port, ??i Firewall, bind `0.0.0.0` ho?c c?i d?ch v? h? ?i?u h?nh.
+Điền đủ sáu biến sau bằng credentials riêng, không để trống:
 
-## Authentication, authorization v? API
-
-- Collector: upload b?n source trong `COLLECTOR_SOURCES`; ch? xem b?n ghi thu?c danh t?nh
-  c?a m?nh v? source ???c c?p quy?n. Kh?ng th? g?i form `client_id` ?? gi? m?o danh t?nh.
-- Admin: xem m?i b?n ghi, g?m d? li?u l?ch s? `client01/client02` v? tr?ng th?i recovery.
-- Kh?a thi?u/sai: 401. Kh?a ??ng nh?ng kh?ng ???c ph?p: 403. CORS m?c ??nh kh?ng m?.
-- `ENABLE_LEGACY_KEYS=False` m?c ??nh. Khi chuy?n ??i c? th? b?t r? r?ng ?? cho kh?a c?
-  ho?t ??ng: client01 ch? USDM/NOAA, client02 ch? USGS/NLDAS. Kh?ng s?a client_id l?ch s?.
-
-| Endpoint | Contract |
+| Biến | Giá trị cần thiết |
 |---|---|
-| GET /health | Public: status=ok, service=climate-data-server |
-| POST /upload | X-API-Key; multipart file, source, source_date; dataset_key t?y ch?n |
-| GET /uploads | X-API-Key; filter source t?y ch?n; l?c theo quy?n |
+| `COLLECTOR_API_KEY` | Khóa upload; gửi riêng cho người chạy Client |
+| `ADMIN_API_KEY` | Khóa quản trị API, khác collector; không cấp cho Client |
+| `MINIO_ROOT_USER` | Tên quản trị MinIO, ví dụ `climate-admin` |
+| `MINIO_ROOT_PASSWORD` | Mật khẩu root mạnh, ngẫu nhiên |
+| `S3_ACCESS_KEY` | Tên ingestion riêng do bạn đặt; khác root |
+| `S3_SECRET_KEY` | Mật khẩu ingestion ngẫu nhiên, khác mật khẩu root |
 
-Field c? v? HTTP 200 `VERIFIED` / `DUPLICATE` gi? nguy?n. Response metadata th?m
-`dataset_key`, `revision`, `previous_file_id`, `is_current`, `error_message`.
-`VERIFIED` x?c nh?n Bronze + registry ?? commit, kh?ng c? ngh?a Silver/Gold ?? x? l?.
-Chi ti?t: [API contract](docs/API_CONTRACT.md).
+Giữ `STORAGE_BACKEND=s3`, tên bốn bucket và hai digest image trong `.env.example`. Endpoint `http://127.0.0.1:9000` dùng cho công cụ native; Compose tự đặt `http://minio:9000` cho API.
 
-## Identity, revision v? l?u tr?
-
-- Physical content identity: SHA-256. C?ng n?i dung d?ng l?i blob v?t l? sau ki?m tra hash.
-- Logical identity: `(source, source_date, dataset_key, sha256)` c? UNIQUE constraint.
-- `dataset_key` ?n ??nh theo s?n ph?m/tr?m/ch? s?; thi?u th? d?ng basename g?c (ch?a sanitize).
-  Tr??ng n?y l? metadata, kh?ng ???c d?ng ?? x?y ???ng d?n raw.
-- Kh?c ng?y/source/key t?o observation m?i d? hash gi?ng nhau. ??i n?i dung t?o revision,
-  li?n k?t version tr??c; ch? m?t revision `is_current=1`. G?i l?i revision c? tr? DUPLICATE
-  c?a revision ??, kh?ng ??a n? th?nh current.
-- Dataset thu?c danh t?nh kh?c b? 403, tr?nh l? metadata qua duplicate. Khi th?m Collector
-  m?i c?n c?p ngu?n/namespace dataset ph? h?p, kh?ng t? nh?n ownership c?a l?ch s?.
-
-Raw m?i: `data_lake/bronze/<source ??u ti?n>/sha256=<hash>/payload`. T?n g?c n?m trong
-registry. Blob chia s? gi?a observation; ???ng d?n c? th? thu?c source c?a l?n g?i ??u.
-Raw c? gi? nguy?n ???ng d?n. Registry: `metadata/ingestion.sqlite3`, schema version 1,
-b?ng `content_blobs`, `observations`, `recovery_reports`; WAL, synchronous FULL,
-transaction BEGIN IMMEDIATE v? unique indexes ch?ng race. Kh?ng ??t SQLite tr?n SMB/NFS.
-Gi?i h?n m?c ??nh **20 MiB**, hash/copy theo chunk, kh?ng load nguy?n file v?o RAM.
-
-## Migration v? recovery
-
-D?ng nh?n upload trong l?c chuy?n ??i l?n ??u ?? ki?m tra k?t qu? r? r?ng:
+Có thể tạo từng khóa bằng PowerShell và lưu kết quả vào `.env`:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts/migrate_metadata.py
-.\.venv\Scripts\python.exe scripts/reconcile_storage.py --checksum
-# T?y ch?n: ch? s?a tr?ng th?i DB sau ki?m tra, kh?ng s?a/x?a raw.
-.\.venv\Scripts\python.exe scripts/reconcile_storage.py --checksum --repair-status
+$bytes = New-Object byte[] 32
+$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+$rng.GetBytes($bytes)
+[Convert]::ToBase64String($bytes)
+$rng.Dispose()
 ```
 
-Migration backup m?i JSON ngu?n trong `metadata/backups/<timestamp-id>/`, ki?m tra file,
-size/hash, import transactional, c? th? ch?y l?i. Gi? JSON v? file raw; b?o c?o l?i/thi?u
-file, kh?ng suy ?o?n observation b? thi?u. SQLite l? source of truth cho metadata m?i.
-D? li?u c? ch?a migrate s? kh?ng xu?t hi?n trong GET /uploads.
+Chạy lại để tạo các khóa khác nhau. Không commit `.env` hoặc chia sẻ log/ảnh chứa secrets. Biến môi trường hệ điều hành có thể ghi đè `.env`.
 
-Reconciliation ph?t hi?n temporary files, orphan Bronze, missing/corrupt/unsafe paths;
-l?u b?o c?o v?o SQLite. `--repair-status` ch? ??nh d?u MISSING/CORRUPT ho?c kh?i ph?c VERIFIED
-sau khi file th?c t? kh?p. Kh?ng t? x?a temp (c? th? ?ang upload), kh?ng t? g?n metadata
-cho orphan. Retry upload c? th? nh?n l?i orphan ??ng hash v? commit observation an to?n.
-N?u registry l?i sau ghi raw, request kh?ng tr? VERIFIED; file raw c?n ?? ph?c h?i.
-Exit code 1 c?a maintenance cho bi?t c? l?i/b?t nh?t c?n xem b?o c?o.
-
-## Tests v? demo
+## 3. Khởi động Server và MinIO
 
 ```powershell
-$env:DEBUG='False'
+docker compose up -d --build --wait --wait-timeout 120
+docker compose ps -a
+Invoke-RestMethod http://127.0.0.1:8000/health
+```
+
+Mong đợi: `api`, `minio` healthy; `minio-init` Exited với mã 0. Init chạy một lần nên Exited 0 là bình thường.
+
+| Địa chỉ trên máy Server | Chức năng |
+|---|---|
+| http://127.0.0.1:8000/health | API liveness |
+| http://127.0.0.1:8000/docs | Tài liệu API |
+| http://127.0.0.1:9000 | S3 endpoint |
+| http://127.0.0.1:9001 | MinIO Console; đăng nhập bằng root trong `.env` |
+
+Console phải có bốn bucket private, có versioning: `climate-bronze`, `climate-silver`, `climate-gold`, `climate-warehouse`. `/health` chưa chứng minh upload/checksum đã thành công.
+
+```powershell
+docker compose logs --tail 100 api minio minio-init
+docker compose exec -T api python scripts/reconcile_storage.py --checksum
+```
+
+## 4. Kết nối hai máy bằng VS Code Dev Tunnels
+
+Mặc định API chỉ bind `127.0.0.1:8000`, nên máy khác không truy cập trực tiếp. Để demo khác mạng mà không cài Tailscale:
+
+1. Trên máy Server, mở cửa sổ VS Code local, giữ Docker đang chạy.
+2. Mở tab **Ports**; có thể dùng Command Palette: `Ports: Focus on Ports View`.
+3. Chọn **Forward a Port**, nhập `8000`, đăng nhập theo yêu cầu.
+4. Sao chép URL HTTPS trong **Forwarded Address**.
+5. Với Client HTTPX hiện tại, chọn **Port Visibility → Public** nếu chấp nhận công khai endpoint API cho demo.
+6. Gửi riêng URL và `COLLECTOR_API_KEY` cho người chạy Client.
+
+Cổng Private yêu cầu thêm xác thực tunnel. Header `X-API-Key` không thay thế xác thực đó; Client hiện chưa hỗ trợ đăng nhập Dev Tunnels. Public bỏ đăng nhập tunnel, nhưng `/upload` vẫn kiểm tra API key. Không cần chia sẻ tài khoản GitHub.
+
+Trên Client:
+
+```dotenv
+SERVER_BASE_URL=https://<dia-chi-forward-duoc-cap>
+SERVER_API_KEY=<COLLECTOR_API_KEY-cua-server>
+```
+
+Không thêm `/upload` vào URL gốc. Chỉ forward **8000**, không forward **9000/9001**. Giữ nguyên bind loopback của Compose. Kiểm tra `<URL>/health` trả JSON của API, không phải trang đăng nhập HTML.
+
+Máy Server, Docker và phiên tunnel cần hoạt động; tránh sleep. Nếu URL thay đổi, sửa `.env` Client và khởi động lại worker. Tunnel có giới hạn băng thông/dịch vụ, phù hợp demo hơn là pipeline lớn liên tục.
+
+**Remote-SSH là cách khác:** máy Client phải SSH được tới Server trước rồi forward cổng remote 8000 về cổng local được VS Code cấp. Remote-SSH không tự giải quyết việc hai máy khác mạng/NAT. Có thể sử dụng VPN hoặc HTTPS reverse proxy thay tunnel.
+
+Tham khảo: [VS Code Port Forwarding](https://code.visualstudio.com/docs/debugtest/port-forwarding), [Remote-SSH](https://code.visualstudio.com/docs/remote/ssh).
+
+## 5. Gửi file và kiểm tra
+
+Làm theo [README Client](https://github.com/phamquocanh149/IT5425_DataLakeHouse_Client#readme): kiểm tra kết nối, tạo mẫu, chạy `send_file.py`.
+
+- `VERIFIED`: object đã upload và download kiểm tra SHA-256/kích thước, SQLite đã commit.
+- `DUPLICATE`: observation và nội dung đã tồn tại, được xác minh; không tạo observation mới.
+- Cùng source/ngày/dataset key nhưng nội dung thay đổi: tạo revision, giữ raw cũ.
+- Ngày `source_date` là ngày khoa học của dữ liệu, không phải ngày gửi file.
+
+```text
+climate-bronze/source=usdm/year=2021/date=2021-06-22/dataset=<hash-dataset-key>/revision=1/sha256=<hash-noi-dung>/raw.csv
+```
+
+API giữ field `file`, `source`, `source_date`, optional `dataset_key` và header `X-API-Key`. Dataset key nên ổn định theo sản phẩm/trạm/chỉ tiêu; mặc định là tên file. Xem [API contract](docs/API_CONTRACT.md).
+
+## 6. Dừng và bảo toàn dữ liệu
+
+```powershell
+docker compose stop
+docker compose start
+# Xóa container/network nhưng giữ named volumes:
+docker compose down
+docker compose up -d --wait
+```
+
+**Không chạy `docker compose down -v` hoặc prune volume chứa dữ liệu.** Volume `minio-data` chứa object; `registry` chứa SQLite; `bronze` cũ giữ temp/raw legacy. Giữ cùng tên Compose project khi chạy lại. SQLite/DuckDB đang ghi phải nằm trên storage local/block phù hợp, không trực tiếp trên S3.
+
+## 7. Migration, backup và phục hồi
+
+Dữ liệu native không tự xuất hiện trong Docker volume. Xem [hướng dẫn migration/backup/restore](docs/MINIO_OPERATIONS.md), gồm import legacy checkout, dry-run, backup SQLite, sao lưu MinIO và rollback.
+
+Nếu raw/metadata cũ đã nằm trong Docker volume và MinIO đã được khởi tạo:
+
+```powershell
+docker compose stop api
+docker compose run --rm --no-deps api python scripts/migrate_metadata.py
+docker compose run --rm --no-deps api python scripts/migrate_bronze_s3.py --dry-run
+# Chỉ apply sau khi inventory đúng và không có lỗi:
+docker compose run --rm --no-deps api python scripts/migrate_bronze_s3.py --apply
+docker compose run --rm --no-deps api python scripts/reconcile_storage.py --checksum
+docker compose up -d --wait
+```
+
+Migration giữ file/JSON cũ, backup SQLite trước khi cập nhật mapping. Orphan chỉ được báo cáo, không tự xóa. Thêm `--repair-status` vào lệnh reconcile để cập nhật trạng thái sau kiểm tra. Backup dài hạn cần nằm ngoài volume đang vận hành; copy SQLite đang ghi mà bỏ WAL không phải backup nhất quán.
+
+## 8. Kiểm thử
+
+Clone Client vào `climate-collector` cạnh `climate-platform`, hoặc đặt `CLIENT_REPO_PATH` tới checkout Client.
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m ruff check .
+.\.venv\Scripts\python.exe -m ruff format --check .
 .\.venv\Scripts\python.exe -m pytest -q
-# Ch? unit tests:
-.\.venv\Scripts\python.exe -m pytest tests/test_server.py tests/test_stage15.py -q
-# Ch? HTTP integration (c?n repo Client c?nh Server ho?c CLIENT_REPO_PATH):
-$env:CLIENT_REPO_PATH=(Resolve-Path ..\climate-collector).Path
-.\.venv\Scripts\python.exe -m pytest tests/integration -q
+.\.venv\Scripts\python.exe scripts/compose_smoke.py
 ```
 
-Integration b?t bu?c d?ng Uvicorn subprocess v? HTTP loopback th?t: A upload, B duplicate,
-C kh?c ng?y, D offline/restart/worker, E c? b?n ngu?n, F hai Client process ??ng th?i.
-M?i storage/DB/credentials l? test ri?ng, kh?ng d?ng d? li?u c?a ng??i d?ng.
-Xem [demo 5?7 ph?t](docs/STAGE_1_5_DEMO.md) v? [b?o c?o ki?m th?](docs/VALIDATION.md).
+Smoke dùng project, bucket, registry và credentials riêng để kiểm tra Client thật → API → MinIO, revision/duplicate, outage/retry và persistence. Nó dừng container test nhưng giữ named volumes test để kiểm tra. Đây chưa phải kiểm thử hai máy vật lý. CI chạy lint/tests/build/smoke, không deploy hoặc dùng secrets production.
 
-## Hai m?y Windows qua Tailscale
+## 9. Xử lý lỗi
 
-Gi? Uvicorn ? 127.0.0.1. Sau khi hai m?y ? c?ng tailnet v? ???c c?p quy?n truy c?p,
-ng??i v?n h?nh b?t HTTPS certificates c?a tailnet v? ch?y tr?n Server:
+| Hiện tượng | Cách kiểm tra |
+|---|---|
+| Không kết nối Docker daemon | Mở Docker Desktop, xác nhận Linux containers và quyền Docker |
+| Compose báo thiếu biến | Điền đủ credentials ở mục 2 trong đúng `.env` |
+| HTTP 401 | So sánh khóa Client với `COLLECTOR_API_KEY` Server |
+| HTTP 403 | Kiểm tra quyền source/ownership; không dùng admin key upload |
+| HTTP 413 | File vượt giới hạn mặc định 20 MiB |
+| HTTP 503 | Kiểm tra MinIO và reconciliation; không tự fallback local |
+| Tunnel trả HTML/302 | Kiểm tra Private/Public và URL; Client không đăng nhập tunnel |
+| Client khác máy dùng localhost | Đổi sang HTTPS tunnel; localhost chỉ chính máy Client |
 
-```powershell
-tailscale serve --bg 8000
-```
+## 10. Trạng thái và giới hạn
 
-Client d?ng URL HTTPS do l?nh tr? v?, kh?ng d?ng localhost c?a m?y Client; kh?ng d?ng
-Admin key, kh?ng t?t TLS verification. Windows c? th? c?n terminal Administrator ??
-ch?y Serve. Ch? h??ng d?n, t?c v? n?y kh?ng t? th?c thi c?u h?nh m?ng. Tham kh?o
-[Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve) v?
-[v? d? Windows](https://tailscale.com/docs/reference/examples/serve).
+[Báo cáo tích hợp](MINIO_INTEGRATION_REPORT.md) ghi digest, kết quả test và migration tại môi trường triển khai. Hai image bên thứ ba bắt buộc có CVE High/Critical và chưa xác minh chuỗi chữ ký nguồn gốc. Kết quả chức năng PASS không có nghĩa hệ thống đã được chấp thuận an toàn production. Xem [scan MinIO](docs/security/minio-cves.md), [scan mc](docs/security/mc-cves.md).
 
-## Gi?i h?n v? b??c ti?p theo
-
-Demo d?ng m?t Server process, SQLite local, t?c v? filesystem/registry ??ng b? c? th?
-ch?n event loop trong th?i gian ng?n; GET /uploads ch?a ph?n trang. Worker Client tu?n t?,
-kh?ng ph?i Windows Service. Reconciliation b?o c?o an to?n, kh?ng kh?i ph?c bytes b? m?t.
-Schema v1 ch?a c? migration t?i version t??ng lai; version l? b? t? ch?i.
-Ch?a ki?m th? tr?n hai m?y v?t l? ho?c qua Tailscale. JSON l?ch s? tr?n m?y n?y ch?a ???c
-migrate t? ??ng v? kh?a local ch?a t? chuy?n ??i. C?n v?n h?nh migration v? c?p Collector key.
-
-Stage 2: b? sung Historical Replay v?i dataset_key ?n ??nh, checkpoint theo t?ng ngu?n,
-v? live collectors. Stage 3: ??c observation current/VERIFIED ?? t?o Silver/Gold trong
-pipeline ri?ng; kh?ng s?a Bronze. Hai stage n?y ch?a ???c tri?n khai trong nhi?m v? n?y.
+Collector hiện còn là khung tích hợp; dữ liệu mẫu chỉ dùng thử truyền file, không phải bộ dữ liệu khoa học đã kiểm định.

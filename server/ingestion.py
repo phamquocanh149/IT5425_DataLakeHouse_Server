@@ -3,11 +3,12 @@ import logging
 import os
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional
 from fastapi import HTTPException, UploadFile, status
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from server.config import settings
 from server.metadata import FileMetadata, metadata_manager
@@ -16,9 +17,28 @@ logger = logging.getLogger("climate_server.ingestion")
 
 # Windows reserved device filenames
 RESERVED_NAMES = {
-    "con", "prn", "aux", "nul",
-    "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
-    "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9"
+    "con",
+    "prn",
+    "aux",
+    "nul",
+    "com1",
+    "com2",
+    "com3",
+    "com4",
+    "com5",
+    "com6",
+    "com7",
+    "com8",
+    "com9",
+    "lpt1",
+    "lpt2",
+    "lpt3",
+    "lpt4",
+    "lpt5",
+    "lpt6",
+    "lpt7",
+    "lpt8",
+    "lpt9",
 }
 
 
@@ -150,15 +170,31 @@ async def process_file_upload(
 
         calculated_sha256 = hasher.hexdigest()
 
-        key = dataset_key if dataset_key is not None else Path((upload_file.filename or "upload.bin").replace("\\", "/")).name
+        key = (
+            dataset_key
+            if dataset_key is not None
+            else Path((upload_file.filename or "upload.bin").replace("\\", "/")).name
+        )
         if not key.strip() or len(key) > 512 or any(ord(c) < 32 for c in key):
             raise HTTPException(400, "Invalid dataset_key")
-        metadata, duplicate = metadata_manager.register_upload(
-            temp_path, valid_source, valid_source_date, key, safe_filename,
-            client_id, calculated_sha256, total_bytes)
-        return IngestionResponse(status="DUPLICATE" if duplicate else "VERIFIED",
-            message="Logical observation already exists" if duplicate else "Bronze and registry committed",
-            metadata=metadata)
+        metadata, duplicate = await run_in_threadpool(
+            metadata_manager.register_upload,
+            temp_path,
+            valid_source,
+            valid_source_date,
+            key,
+            safe_filename,
+            client_id,
+            calculated_sha256,
+            total_bytes,
+        )
+        return IngestionResponse(
+            status="DUPLICATE" if duplicate else "VERIFIED",
+            message="Logical observation already exists"
+            if duplicate
+            else "Bronze and registry committed",
+            metadata=metadata,
+        )
 
     except Exception:
         # Ensure cleanup of any temp file

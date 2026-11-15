@@ -1,9 +1,8 @@
 import logging
+import sys
 from contextlib import asynccontextmanager
 from typing import List, Optional
 from fastapi import Depends, FastAPI, File, Form, Query, UploadFile, status
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 
 from server.config import settings
 from server.ingestion import IngestionResponse, process_file_upload
@@ -12,6 +11,7 @@ from server.security import get_current_client, authorize_upload, allowed_source
 
 # Configure server logging
 logging.basicConfig(
+    stream=sys.stdout,
     level=logging.DEBUG if settings.DEBUG else logging.INFO,
     format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
@@ -103,14 +103,19 @@ async def upload_dataset(
     response_model=List[FileMetadata],
 )
 async def list_uploads(
-    source: Optional[str] = Query(None, description="Optional filter by source (usdm, noaa, usgs, nldas)"),
+    source: Optional[str] = Query(
+        None, description="Optional filter by source (usdm, noaa, usgs, nldas)"
+    ),
     client_id: str = Depends(get_current_client),
 ):
     """Returns the list of all verified ingested files with metadata. Requires client authentication."""
     logger.info("Client '%s' requested upload list (source_filter=%s)", client_id, source)
     if client_id != "admin" and source and source not in allowed_sources(client_id):
         from fastapi import HTTPException
+
         raise HTTPException(403, "Source is not authorized")
-    return metadata_manager.list_all(source_filter=source,
+    return metadata_manager.list_all(
+        source_filter=source,
         client_id=None if client_id == "admin" else client_id,
-        sources=None if client_id == "admin" else allowed_sources(client_id))
+        sources=None if client_id == "admin" else allowed_sources(client_id),
+    )

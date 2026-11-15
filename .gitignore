@@ -43,3 +43,9 @@ data_lake/temp/*
 .vscode/
 *.swp
 *.swo
+
+.ruff_cache/
+.test-runs/
+.smoke/
+backup-*/
+storage.tgz

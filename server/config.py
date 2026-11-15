@@ -1,15 +1,11 @@
 from pathlib import Path
-from typing import Dict, Set
+from typing import Dict, Set, Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, model_validator
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # Server Network Settings
     SERVER_HOST: str = "127.0.0.1"
@@ -21,10 +17,19 @@ class Settings(BaseSettings):
     DATA_LAKE_DIR: str = "data_lake"
     METADATA_DIR: str = "metadata"
     TEMP_DIR: str = "data_lake/temp"
+    STORAGE_BACKEND: Literal["local", "s3"] = "s3"
+    S3_ENDPOINT: str = "http://minio:9000"
+    S3_REGION: str = "us-east-1"
+    S3_BUCKET_BRONZE: str = "climate-bronze"
+    S3_BUCKET_SILVER: str = "climate-silver"
+    S3_BUCKET_GOLD: str = "climate-gold"
+    S3_BUCKET_WAREHOUSE: str = "climate-warehouse"
+    S3_ACCESS_KEY: str = ""
+    S3_SECRET_KEY: str = ""
 
     # Ingestion Constraints
     MAX_FILE_SIZE_BYTES: int = 20 * 1024 * 1024  # 20 MB limit
-    CHUNK_SIZE_BYTES: int = 1024 * 1024          # 1 MB stream chunk
+    CHUNK_SIZE_BYTES: int = 1024 * 1024  # 1 MB stream chunk
 
     # Valid Climate Ingestion Sources
     ALLOWED_SOURCES: Set[str] = {"usdm", "noaa", "usgs", "nldas"}
@@ -39,6 +44,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_keys(self):
+        if not self.COLLECTOR_API_KEY.strip() or not self.ADMIN_API_KEY.strip():
+            raise ValueError("COLLECTOR_API_KEY and ADMIN_API_KEY are required")
+        if not self.COLLECTOR_SOURCES or not self.COLLECTOR_SOURCES <= self.ALLOWED_SOURCES:
+            raise ValueError("COLLECTOR_SOURCES must contain supported sources")
         keys = [self.COLLECTOR_API_KEY, self.ADMIN_API_KEY]
         if self.ENABLE_LEGACY_KEYS:
             keys += [self.CLIENT01_API_KEY, self.CLIENT02_API_KEY]
@@ -47,6 +56,8 @@ class Settings(BaseSettings):
             raise ValueError("Configured API keys must be distinct")
         if any(key.startswith("REPLACE_WITH") for key in active):
             raise ValueError("Replace placeholder API keys before starting Server")
+        if self.STORAGE_BACKEND == "s3" and (not self.S3_ACCESS_KEY or not self.S3_SECRET_KEY):
+            raise ValueError("S3_ACCESS_KEY and S3_SECRET_KEY are required for S3 storage")
         return self
 
     @property

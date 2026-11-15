@@ -8,7 +8,6 @@ import hashlib
 import json
 import os
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 import httpx
 from dotenv import load_dotenv
@@ -43,8 +42,15 @@ def create_sample_dataset(file_path: Path) -> None:
 
 def main():
     parser = argparse.ArgumentParser(description="Climate Data Lake Upload Test Client")
-    parser.add_argument("--url", default=DEFAULT_SERVER_URL, help=f"Server base URL (default: {DEFAULT_SERVER_URL})")
-    parser.add_argument("--file", type=str, default=None, help="Path to file to upload (creates demo file if omitted)")
+    parser.add_argument(
+        "--url", default=DEFAULT_SERVER_URL, help=f"Server base URL (default: {DEFAULT_SERVER_URL})"
+    )
+    parser.add_argument(
+        "--file",
+        type=str,
+        default=None,
+        help="Path to file to upload (creates demo file if omitted)",
+    )
     parser.add_argument(
         "--source",
         choices=["usdm", "noaa", "usgs", "nldas"],
@@ -77,7 +83,9 @@ def main():
         print(f"\n[+] Querying {args.url}/uploads (Filter: source={args.source})...")
         try:
             with httpx.Client(timeout=10.0) as client:
-                res = client.get(f"{args.url}/uploads", headers=headers, params={"source": args.source})
+                res = client.get(
+                    f"{args.url}/uploads", headers=headers, params={"source": args.source}
+                )
                 print(f"[+] HTTP Status: {res.status_code}")
                 if res.status_code == 200:
                     records = res.json()
@@ -152,7 +160,9 @@ def main():
                     print(f"          Storage Path : {meta.get('stored_path')}")
                     print(f"          File ID      : {meta.get('file_id')}")
                 elif server_status == "DUPLICATE":
-                    print("[INFO] Server recognized duplicate file checksum. No redundant copy saved.")
+                    print(
+                        "[INFO] Server recognized duplicate file checksum. No redundant copy saved."
+                    )
             else:
                 print(f"[-] Server returned error code {response.status_code}")
 

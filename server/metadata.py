@@ -1,9 +1,8 @@
-import json
 import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 from pydantic import BaseModel, Field
 
 from server.config import settings
@@ -24,9 +23,14 @@ class FileMetadata(BaseModel):
     original_filename: str = Field(..., description="Sanitized original filename")
     stored_path: str = Field(..., description="Relative storage path in data lake")
     size_bytes: int = Field(..., ge=0, description="File size in bytes")
-    sha256: str = Field(..., min_length=64, max_length=64, description="Calculated SHA-256 checksum")
+    sha256: str = Field(
+        ..., min_length=64, max_length=64, description="Calculated SHA-256 checksum"
+    )
     received_at: str = Field(..., description="UTC ISO-8601 timestamp when received")
     dataset_key: str = ""
+    s3_bucket: Optional[str] = None
+    s3_object_key: Optional[str] = None
+    s3_version_id: Optional[str] = None
     revision: int = 1
     previous_file_id: Optional[str] = None
     is_current: bool = True
@@ -44,6 +48,7 @@ def file_hash(path):
 
 class MetadataManager:
     """Local SQLite registry; a short-lived connection per operation, never shared across threads."""
+
     def __init__(self, metadata_dir=None):
         self.metadata_dir = metadata_dir or settings.metadata_path
 
@@ -74,7 +79,7 @@ class MetadataManager:
             version = db.execute("PRAGMA user_version").fetchone()[0]
             if version not in (0, 1):
                 raise RuntimeError("Unsupported registry schema version")
-            db.executescript('''
+            db.executescript("""
                 CREATE TABLE IF NOT EXISTS content_blobs (
                     sha256 TEXT PRIMARY KEY, stored_path TEXT NOT NULL, size_bytes INTEGER NOT NULL CHECK(size_bytes>=0));
                 CREATE TABLE IF NOT EXISTS observations (
@@ -94,7 +99,14 @@ class MetadataManager:
                 CREATE TABLE IF NOT EXISTS recovery_reports (
                     report_id TEXT PRIMARY KEY, created_at TEXT NOT NULL, report_json TEXT NOT NULL);
                 PRAGMA user_version=1;
-            ''')
+            """)
+            # Additive migration under a writer lock; legacy paths and blob records are retained.
+            db.execute("BEGIN IMMEDIATE")
+            columns = {r[1] for r in db.execute("PRAGMA table_info(observations)")}
+            for column in ("s3_bucket", "s3_object_key", "s3_version_id"):
+                if column not in columns:
+                    db.execute(f"ALTER TABLE observations ADD COLUMN {column} TEXT")
+            db.execute("COMMIT")
             yield db
         finally:
             db.close()
@@ -102,29 +114,54 @@ class MetadataManager:
     def _insert(self, db, record):
         values = record.model_dump()
         fields = list(values)
-        db.execute("INSERT INTO observations (" + ",".join(fields) + ") VALUES (" +
-                   ",".join("?" for _ in fields) + ")", [values[k] for k in fields])
+        db.execute(
+            "INSERT INTO observations ("
+            + ",".join(fields)
+            + ") VALUES ("
+            + ",".join("?" for _ in fields)
+            + ")",
+            [values[k] for k in fields],
+        )
 
     def resolve_raw(self, stored_path):
         path = (settings.BASE_DIR / stored_path).resolve()
         path.relative_to(settings.bronze_path.resolve())
         return path
 
-    def register_upload(self, temporary, source, source_date, dataset_key, filename, client_id, sha256, size):
+    def register_upload(
+        self, temporary, source, source_date, dataset_key, filename, client_id, sha256, size
+    ):
         from fastapi import HTTPException
+
+        if settings.STORAGE_BACKEND == "s3":
+            return self._register_s3(
+                temporary, source, source_date, dataset_key, filename, client_id, sha256, size
+            )
+
         with self.connection() as db:
             db.execute("BEGIN IMMEDIATE")
             identity = (source, source_date, dataset_key)
-            current = db.execute("SELECT * FROM observations WHERE source=? AND source_date=? AND dataset_key=? AND is_current=1", identity).fetchone()
+            current = db.execute(
+                "SELECT * FROM observations WHERE source=? AND source_date=? AND dataset_key=? AND is_current=1",
+                identity,
+            ).fetchone()
             if current and current["client_id"] != client_id:
                 raise HTTPException(403, "Dataset belongs to another identity")
-            previous = db.execute("SELECT * FROM observations WHERE source=? AND source_date=? AND dataset_key=? AND sha256=?", (*identity, sha256)).fetchone()
+            previous = db.execute(
+                "SELECT * FROM observations WHERE source=? AND source_date=? AND dataset_key=? AND sha256=?",
+                (*identity, sha256),
+            ).fetchone()
             if previous:
                 if previous["client_id"] != client_id:
                     raise HTTPException(403, "Observation belongs to another identity")
                 record = FileMetadata(**dict(previous))
                 path = self.resolve_raw(record.stored_path)
-                if not path.is_file() or path.stat().st_size != size or file_hash(path) != sha256 or record.status != "VERIFIED":
+                if (
+                    not path.is_file()
+                    or path.stat().st_size != size
+                    or file_hash(path) != sha256
+                    or record.status != "VERIFIED"
+                ):
                     raise HTTPException(503, "Stored content requires reconciliation")
                 db.commit()
                 temporary.unlink(missing_ok=True)
@@ -145,18 +182,106 @@ class MetadataManager:
                     # The SQLite writer lock serializes publishers. A rollback can leave an orphan,
                     # which reconciliation reports and a retry can safely adopt after hashing.
                     os.replace(temporary, path)
-                db.execute("INSERT INTO content_blobs VALUES (?,?,?)", (sha256, path.relative_to(settings.BASE_DIR).as_posix(), size))
-            record = FileMetadata(file_id="file_" + uuid.uuid4().hex,
-                client_id=client_id, source=source, source_date=source_date, dataset_key=dataset_key,
-                original_filename=filename, stored_path=path.relative_to(settings.BASE_DIR).as_posix(),
-                sha256=sha256, size_bytes=size, received_at=datetime.now(timezone.utc).isoformat(),
+                db.execute(
+                    "INSERT INTO content_blobs VALUES (?,?,?)",
+                    (sha256, path.relative_to(settings.BASE_DIR).as_posix(), size),
+                )
+            record = FileMetadata(
+                file_id="file_" + uuid.uuid4().hex,
+                client_id=client_id,
+                source=source,
+                source_date=source_date,
+                dataset_key=dataset_key,
+                original_filename=filename,
+                stored_path=path.relative_to(settings.BASE_DIR).as_posix(),
+                sha256=sha256,
+                size_bytes=size,
+                received_at=datetime.now(timezone.utc).isoformat(),
                 revision=current["revision"] + 1 if current else 1,
-                previous_file_id=current["file_id"] if current else None)
-            db.execute("UPDATE observations SET is_current=0 WHERE source=? AND source_date=? AND dataset_key=?", identity)
+                previous_file_id=current["file_id"] if current else None,
+            )
+            db.execute(
+                "UPDATE observations SET is_current=0 WHERE source=? AND source_date=? AND dataset_key=?",
+                identity,
+            )
             self._insert(db, record)
             db.commit()
             temporary.unlink(missing_ok=True)
             return record, False
+
+    def _register_s3(
+        self, temporary, source, source_date, dataset_key, filename, client_id, sha256, size
+    ):
+        from fastapi import HTTPException
+        from botocore.exceptions import BotoCoreError, ClientError
+        from .storage import S3Storage, object_key
+
+        storage = S3Storage()
+        try:
+            with self.connection() as db:
+                db.execute("BEGIN IMMEDIATE")
+                identity = (source, source_date, dataset_key)
+                current = db.execute(
+                    "SELECT * FROM observations WHERE source=? AND source_date=? AND dataset_key=? AND is_current=1",
+                    identity,
+                ).fetchone()
+                if current and current["client_id"] != client_id:
+                    raise HTTPException(403, "Dataset belongs to another identity")
+                previous = db.execute(
+                    "SELECT * FROM observations WHERE source=? AND source_date=? AND dataset_key=? AND sha256=?",
+                    (*identity, sha256),
+                ).fetchone()
+                if previous:
+                    record = FileMetadata(**dict(previous))
+                    if record.client_id != client_id:
+                        raise HTTPException(403, "Observation belongs to another identity")
+                    if record.status != "VERIFIED" or not record.s3_object_key:
+                        raise HTTPException(
+                            503, "Stored content requires migration or reconciliation"
+                        )
+                    storage.verify(
+                        record.s3_object_key, record.sha256, record.size_bytes, record.s3_bucket
+                    )
+                    db.commit()
+                    temporary.unlink(missing_ok=True)
+                    return record, True
+                revision = current["revision"] + 1 if current else 1
+                key = object_key(source, source_date, dataset_key, revision, sha256, filename)
+                version = storage.publish(temporary, key, sha256, size)
+                uri = f"s3://{storage.bucket}/{key}"
+                db.execute(
+                    "INSERT OR IGNORE INTO content_blobs VALUES (?,?,?)", (sha256, uri, size)
+                )
+                record = FileMetadata(
+                    file_id="file_" + uuid.uuid4().hex,
+                    source=source,
+                    source_date=source_date,
+                    dataset_key=dataset_key,
+                    original_filename=filename,
+                    client_id=client_id,
+                    stored_path=uri,
+                    sha256=sha256,
+                    size_bytes=size,
+                    received_at=datetime.now(timezone.utc).isoformat(),
+                    revision=revision,
+                    previous_file_id=current["file_id"] if current else None,
+                    s3_bucket=storage.bucket,
+                    s3_object_key=key,
+                    s3_version_id=version,
+                )
+                db.execute(
+                    "UPDATE observations SET is_current=0 WHERE source=? AND source_date=? AND dataset_key=?",
+                    identity,
+                )
+                self._insert(db, record)
+                db.commit()
+                temporary.unlink(missing_ok=True)
+                return record, False
+        except (BotoCoreError, ClientError, ValueError) as exc:
+            logger.warning("S3 verification failed: %s", type(exc).__name__)
+            raise HTTPException(
+                503, "Bronze storage unavailable or integrity check failed"
+            ) from exc
 
     def get_by_file_id(self, file_id):
         with self.connection() as db:
@@ -167,12 +292,16 @@ class MetadataManager:
         sql = "SELECT * FROM observations WHERE 1=1"
         params = []
         if source_filter:
-            sql += " AND source=?"; params.append(source_filter)
+            sql += " AND source=?"
+            params.append(source_filter)
         if client_id:
-            sql += " AND client_id=?"; params.append(client_id)
+            sql += " AND client_id=?"
+            params.append(client_id)
         with self.connection() as db:
             rows = db.execute(sql + " ORDER BY received_at DESC", params).fetchall()
-        return [FileMetadata(**dict(row)) for row in rows if sources is None or row["source"] in sources]
+        return [
+            FileMetadata(**dict(row)) for row in rows if sources is None or row["source"] in sources
+        ]
 
 
 metadata_manager = MetadataManager()
