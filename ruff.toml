@@ -9,3 +9,5 @@ select = ["E4", "E7", "E9", "F"]
 "tests/integration/test_loopback.py" = ["E402"]
 # Imported pytest fixtures are injected by parameter name, not called directly.
 "tests/test_stage15.py" = ["F811"]
+
+"tests/test_readiness_security.py" = ["F811"]

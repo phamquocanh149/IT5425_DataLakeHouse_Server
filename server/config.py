@@ -1,7 +1,29 @@
 from pathlib import Path
 from typing import Dict, Set, Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, model_validator
+from pydantic import BaseModel, Field, model_validator
+from datetime import datetime
+
+
+class APIKeyRecord(BaseModel):
+    key_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    secret_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    client_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    role: Literal["collector", "admin"]
+    expires_at: datetime
+    not_before: datetime | None = None
+    enabled: bool = True
+    sources: Set[str] = Field(default_factory=set)
+
+    @model_validator(mode="after")
+    def validate_record(self):
+        if self.expires_at.tzinfo is None or (self.not_before and self.not_before.tzinfo is None):
+            raise ValueError("Key validity dates must include timezone")
+        if self.not_before and self.not_before >= self.expires_at:
+            raise ValueError("Key validity interval is empty")
+        if (self.role == "admin") != (self.client_id == "admin"):
+            raise ValueError("admin identity is reserved for the admin role")
+        return self
 
 
 class Settings(BaseSettings):
@@ -27,6 +49,15 @@ class Settings(BaseSettings):
     S3_ACCESS_KEY: str = ""
     S3_SECRET_KEY: str = ""
 
+    READINESS_CACHE_SECONDS: float = Field(3, ge=0, le=10)
+    READINESS_TIMEOUT_SECONDS: float = Field(0.5, gt=0, le=2)
+    API_KEYS: list[APIKeyRecord] = Field(default_factory=list)
+    ENABLE_STATIC_KEYS: bool = True  # migration compatibility; disable for Internet deployment
+    RATE_LIMIT_PER_MINUTE: int = Field(120, gt=0)
+    DAILY_UPLOAD_QUOTA_BYTES: int = Field(1024 * 1024 * 1024, gt=0)
+    REQUIRE_SSE_KMS: bool = False
+    REQUIRE_OBJECT_LOCK: bool = False
+
     # Ingestion Constraints
     MAX_FILE_SIZE_BYTES: int = 20 * 1024 * 1024  # 20 MB limit
     CHUNK_SIZE_BYTES: int = 1024 * 1024  # 1 MB stream chunk
@@ -44,8 +75,38 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_keys(self):
-        if not self.COLLECTOR_API_KEY.strip() or not self.ADMIN_API_KEY.strip():
+        if self.ENABLE_STATIC_KEYS and (
+            not self.COLLECTOR_API_KEY.strip() or not self.ADMIN_API_KEY.strip()
+        ):
             raise ValueError("COLLECTOR_API_KEY and ADMIN_API_KEY are required")
+        if not self.ENABLE_STATIC_KEYS and not self.API_KEYS:
+            raise ValueError("API_KEYS is required when static keys are disabled")
+        if len({key.key_id for key in self.API_KEYS}) != len(self.API_KEYS):
+            raise ValueError("Duplicate key_id")
+        for key in self.API_KEYS:
+            if not key.sources <= self.ALLOWED_SOURCES:
+                raise ValueError("Unsupported key sources")
+            if key.role == "collector" and not key.sources:
+                raise ValueError("Collector keys require sources")
+        identities = {}
+        for key in self.API_KEYS:
+            grant = (key.role, frozenset(key.sources))
+            if key.client_id in identities and identities[key.client_id] != grant:
+                raise ValueError("Rotating keys must preserve identity permissions")
+            identities[key.client_id] = grant
+        if self.ENABLE_STATIC_KEYS:
+            static_grants = {
+                "collector01": ("collector", frozenset(self.COLLECTOR_SOURCES)),
+                "admin": ("admin", frozenset()),
+            }
+            if self.ENABLE_LEGACY_KEYS:
+                static_grants.update(
+                    client01=("collector", frozenset({"usdm", "noaa"})),
+                    client02=("collector", frozenset({"usgs", "nldas"})),
+                )
+            for client, grant in identities.items():
+                if client in static_grants and grant != static_grants[client]:
+                    raise ValueError("Static and rotating keys must preserve identity permissions")
         if not self.COLLECTOR_SOURCES or not self.COLLECTOR_SOURCES <= self.ALLOWED_SOURCES:
             raise ValueError("COLLECTOR_SOURCES must contain supported sources")
         keys = [self.COLLECTOR_API_KEY, self.ADMIN_API_KEY]

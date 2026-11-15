@@ -5,6 +5,10 @@ from typing import List, Optional
 from fastapi import Depends, FastAPI, File, Form, Query, UploadFile, status
 
 from server.config import settings
+from server.readiness import readiness, validate_storage
+from server.access import AccessMiddleware, initialize_access_store
+from starlette.concurrency import run_in_threadpool
+from starlette.responses import JSONResponse
 from server.ingestion import IngestionResponse, process_file_upload
 from server.metadata import FileMetadata, metadata_manager
 from server.security import get_current_client, authorize_upload, allowed_sources
@@ -26,10 +30,16 @@ async def lifespan(app: FastAPI):
     settings.ensure_directories()
     with metadata_manager.connection():
         pass
+    await run_in_threadpool(initialize_access_store)
+    await run_in_threadpool(validate_storage)
+    readiness.reset()
     logger.info(
         "Storage ready. Bronze path: %s | Active clients: %s",
         settings.bronze_path,
-        list(set(settings.api_keys.values())),
+        sorted(
+            {key.client_id for key in settings.API_KEYS}
+            | (set(settings.api_keys.values()) if settings.ENABLE_STATIC_KEYS else set())
+        ),
     )
     yield
     logger.info("Shutting down Climate Data Lake Server...")
@@ -42,22 +52,26 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(AccessMiddleware)
+
 # CORS setup (allow local development if needed)
 # No browser cross-origin access is needed by the HTTPX client.
 
 
-@app.get(
-    "/health",
-    tags=["System"],
-    summary="Health check endpoint",
-    response_model=dict,
-)
-async def health_check():
-    """Returns server health and service identifier."""
-    return {
-        "status": "ok",
-        "service": "climate-data-server",
-    }
+@app.get("/livez", tags=["System"])
+async def liveness():
+    return {"status": "ok", "service": "climate-data-server"}
+
+
+@app.get("/health", tags=["System"], deprecated=True)
+@app.get("/readyz", tags=["System"])
+def health_check():
+    ok = readiness.check()
+    return JSONResponse(
+        {"status": "ok" if ok else "unavailable", "service": "climate-data-server"},
+        status_code=200 if ok else 503,
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.post(

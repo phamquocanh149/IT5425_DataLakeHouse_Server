@@ -151,7 +151,9 @@ def test_registry_commit_failure_rolls_back(client, monkeypatch):
             raise sqlite3.OperationalError("simulated commit failure")
 
     def connect(*args, **kwargs):
-        return real_connect(*args, **kwargs, factory=FailingCommit)
+        if str(args[0]).endswith("ingestion.sqlite3"):
+            kwargs["factory"] = FailingCommit
+        return real_connect(*args, **kwargs)
 
     with monkeypatch.context() as patch:
         patch.setattr(sqlite3, "connect", connect)

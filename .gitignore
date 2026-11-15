@@ -49,3 +49,5 @@ data_lake/temp/*
 .smoke/
 backup-*/
 storage.tgz
+
+security-artifacts/

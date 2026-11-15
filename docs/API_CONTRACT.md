@@ -2,7 +2,15 @@
 
 ## Endpoints
 
-`GET /health`: public; HTTP 200 `{ "status": "ok", "service": "climate-data-server" }`.
+`GET /livez`: public process liveness; HTTP 200 `{ "status": "ok", "service": "climate-data-server" }`.
+
+`GET /readyz` (also `/health` for compatibility): public dependency readiness;
+HTTP 200 with `status=ok` or HTTP 503 with `status=unavailable`. Cached for 3 seconds.
+
+Protected routes accept `X-API-Key: key_id.secret`; hashed records support expiry,
+revocation and overlapping rotation. Legacy credentials remain available only in
+migration mode. Rate/quota exhaustion returns 429 with Retry-After. See
+[security and migration](security.md).
 `GET /openapi.json`: FastAPI schema, kh?ng b?t bu?c d?ng ?? g?i file.
 
 `POST /upload`: header `X-API-Key`, multipart:

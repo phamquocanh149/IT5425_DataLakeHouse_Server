@@ -13,6 +13,14 @@ def pytest_configure(config):
 
 os.environ.update(
     STORAGE_BACKEND="local",
+    API_KEYS="[]",
+    ENABLE_STATIC_KEYS="True",
+    REQUIRE_SSE_KMS="False",
+    REQUIRE_OBJECT_LOCK="False",
+    RATE_LIMIT_PER_MINUTE="120",
+    DAILY_UPLOAD_QUOTA_BYTES="1073741824",
+    READINESS_CACHE_SECONDS="3",
+    READINESS_TIMEOUT_SECONDS="0.5",
     DEBUG="False",
     COLLECTOR_API_KEY="test-only-collector",
     ADMIN_API_KEY="test-only-admin",

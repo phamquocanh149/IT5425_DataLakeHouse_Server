@@ -1,3 +1,7 @@
+> P0.4/P0.5 remediation: see [readiness, credentials, TLS and deployment prerequisites](docs/security.md).
+> `/readyz` is readiness; `/livez` is liveness; `/health` remains a readiness alias.
+> Deployment now requires verified official `MINIO_DIGEST` and `MINIO_MC_DIGEST` values.
+
 ﻿# Data LakeHouse — Server
 
 Server nhận file từ Client qua FastAPI, kiểm tra SHA-256, lưu raw vào MinIO Bronze và quản lý observation/revision bằng SQLite.
@@ -70,7 +74,8 @@ Mong đợi: `api`, `minio` healthy; `minio-init` Exited với mã 0. Init chạ
 
 | Địa chỉ trên máy Server | Chức năng |
 |---|---|
-| http://127.0.0.1:8000/health | API liveness |
+| http://127.0.0.1:8000/livez | API liveness |
+| http://127.0.0.1:8000/readyz | Dependency readiness (200/503) |
 | http://127.0.0.1:8000/docs | Tài liệu API |
 | http://127.0.0.1:9000 | S3 endpoint |
 | http://127.0.0.1:9001 | MinIO Console; đăng nhập bằng root trong `.env` |

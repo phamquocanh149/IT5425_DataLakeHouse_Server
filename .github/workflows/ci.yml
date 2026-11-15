@@ -5,6 +5,9 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      MINIO_DIGEST: ${{ vars.MINIO_DIGEST }}
+      MINIO_MC_DIGEST: ${{ vars.MINIO_MC_DIGEST }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,6 +33,19 @@ jobs:
       - name: Docker build
         working-directory: climate-platform
         run: docker build -t climate-server:ci .
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@e07451d2e059ed86c2870430ea286b3a9e0bf241
+        with:
+          version: v0.68.2
+      - name: Verify official images, scan and generate SBOM
+        working-directory: climate-platform
+        run: python scripts/verify_images.py
+      - name: Preserve supply-chain evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-security-evidence
+          path: climate-platform/security-artifacts/
       - name: Compose and native Client smoke
         working-directory: climate-platform
         run: python scripts/compose_smoke.py | tee minio-smoke.log

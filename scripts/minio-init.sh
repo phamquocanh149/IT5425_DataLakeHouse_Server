@@ -16,7 +16,7 @@ for bucket in "$S3_BUCKET_BRONZE" "$S3_BUCKET_SILVER" "$S3_BUCKET_GOLD" "$S3_BUC
 done
 cat > /tmp/bronze-policy.json <<EOF
 {"Version":"2012-10-17","Statement":[
- {"Effect":"Allow","Action":["s3:GetBucketLocation","s3:ListBucket"],"Resource":["arn:aws:s3:::$S3_BUCKET_BRONZE"]},
+ {"Effect":"Allow","Action":["s3:GetBucketLocation","s3:ListBucket","s3:GetBucketVersioning","s3:GetBucketPolicy","s3:GetEncryptionConfiguration","s3:GetBucketObjectLockConfiguration"],"Resource":["arn:aws:s3:::$S3_BUCKET_BRONZE"]},
  {"Effect":"Allow","Action":["s3:GetObject","s3:PutObject"],"Resource":["arn:aws:s3:::$S3_BUCKET_BRONZE/source=usdm/*","arn:aws:s3:::$S3_BUCKET_BRONZE/source=noaa/*","arn:aws:s3:::$S3_BUCKET_BRONZE/source=usgs/*","arn:aws:s3:::$S3_BUCKET_BRONZE/source=nldas/*"]}
 ]}
 EOF
