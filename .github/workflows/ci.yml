@@ -2,12 +2,46 @@ name: Server checks
 on: [push, pull_request]
 permissions:
   contents: read
+env:
+  # Update only with cross-repo compatibility evidence.
+  CLIENT_COMMIT: 63a4773f501d5eb55be835d6852564bfd6fa0ebb
 jobs:
+  gis:
+    name: Required real GIS and checkpoint restore
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m venv .api-venv && .api-venv/bin/pip install -r requirements-dev.txt
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - run: python -m venv .gis-venv && .gis-venv/bin/pip install -r requirements-gis.txt
+      - name: Mandatory GIS tests (no external source checkout)
+        env:
+          REQUIRE_GIS_TESTS: '1'
+          USDM_GIS_PYTHON: ${{ github.workspace }}/.gis-venv/bin/python
+        run: |
+          .api-venv/bin/python -m pytest tests/test_usdm_gis.py -q --junitxml=gis-tests.xml
+          .api-venv/bin/python scripts/check_gis_report.py gis-tests.xml
+          .api-venv/bin/python scripts/gis_smoke.py --gis-python "$USDM_GIS_PYTHON" > gis-restore.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gis-checkpoint-evidence
+          path: |
+            gis-tests.xml
+            gis-restore.json
   verify:
+    needs: gis
     runs-on: ubuntu-latest
     env:
       MINIO_DIGEST: ${{ vars.MINIO_DIGEST }}
       MINIO_MC_DIGEST: ${{ vars.MINIO_MC_DIGEST }}
+      CLIMATE_API_IMAGE: climate-server:${{ github.sha }}
+      CLIMATE_WORKER_IMAGE: climate-worker:${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -15,7 +49,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: phamquocanh149/IT5425_DataLakeHouse_Client
+          ref: ${{ env.CLIENT_COMMIT }}
           path: climate-collector
+      - name: Verify Client commit
+        run: test "$(git -C climate-collector rev-parse HEAD)" = "$CLIENT_COMMIT"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -23,35 +60,55 @@ jobs:
           cache-dependency-path: climate-platform/requirements*.txt
       - name: Install
         working-directory: climate-platform
-        run: python -m pip install -r requirements-dev.txt
+        run: python -m pip install -r requirements-dev.txt -r requirements-portal.txt
       - name: Lint and tests
         working-directory: climate-platform
         run: |
           python -m ruff check .
           python -m ruff format --check .
-          python -m pytest -q
-      - name: Docker build
+          python -m pytest -q --junitxml=server-tests.xml
+          python -m pytest ../climate-collector/tests -q --junitxml=client-tests.xml
+      - name: Build release candidates
         working-directory: climate-platform
-        run: docker build -t climate-server:ci .
+        run: |
+          docker build -t "$CLIMATE_API_IMAGE" .
+          docker build -f Dockerfile.worker -t "$CLIMATE_WORKER_IMAGE" .
+      - name: Test actual worker image with real GIS and restore
+        run: docker run --rm "$CLIMATE_WORKER_IMAGE" python scripts/gis_smoke.py > climate-platform/worker-smoke.json
       - name: Install Trivy
         uses: aquasecurity/setup-trivy@e07451d2e059ed86c2870430ea286b3a9e0bf241
         with:
           version: v0.68.2
-      - name: Verify official images, scan and generate SBOM
+      - name: Scan all four images and generate SBOMs
         working-directory: climate-platform
-        run: python scripts/verify_images.py
-      - name: Preserve supply-chain evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: image-security-evidence
-          path: climate-platform/security-artifacts/
-      - name: Compose and native Client smoke
+        run: python scripts/verify_images.py --api-image "$CLIMATE_API_IMAGE" --worker-image "$CLIMATE_WORKER_IMAGE"
+      - name: Compose smoke using the scanned API image
         working-directory: climate-platform
         run: python scripts/compose_smoke.py | tee minio-smoke.log
-      - name: Upload MinIO validation evidence
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Full MinIO checkpoint and independent restore
+        working-directory: climate-platform
+        run: python scripts/minio_recovery_smoke.py > minio-recovery.json
+      - name: Preserve exact tested images (no rebuild for release)
+        working-directory: climate-platform
+        run: |
+          mkdir -p release-artifacts
+          docker save "$CLIMATE_API_IMAGE" "$CLIMATE_WORKER_IMAGE" | gzip > release-artifacts/images.tar.gz
+          sha256sum release-artifacts/images.tar.gz > release-artifacts/images.tar.gz.sha256
+          printf '%s\n' "$GITHUB_SHA" > release-artifacts/server-commit.txt
+          printf '%s\n' "$CLIENT_COMMIT" > release-artifacts/client-commit.txt
+          cp security-artifacts/verified-images.json release-artifacts/
+      - uses: actions/upload-artifact@v4
         with:
-          name: minio-integration
-          path: climate-platform/minio-smoke.log
+          name: tested-release-images
+          path: climate-platform/release-artifacts/
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-validation-evidence
+          path: |
+            climate-platform/security-artifacts/
+            climate-platform/*-tests.xml
+            climate-platform/worker-smoke.json
+            climate-platform/minio-smoke.log
+            climate-platform/minio-recovery.json

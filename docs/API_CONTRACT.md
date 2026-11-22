@@ -1,4 +1,4 @@
-# Stage 1.5 API contract
+# API contract — Stage 1 baseline / Stage 2 fixes
 
 ## Endpoints
 
@@ -89,3 +89,24 @@ JSON l?ch s? ???c migrate ri?ng, gi? client_id v? ???ng d?n raw g?c. N?u metadat
 ch? c?n t?n ?? sanitize, kh?ng th? suy ra t?n unsanitized: fallback dataset_key d?ng
 original_filename l?u trong JSON. C?n g?i key ?? khi mu?n nh?m ??ng observation c?,
 v? d?ng identity/quy?n ph? h?p; kh?ng t? ??i ownership l?ch s?.
+
+## Stage 2 compatibility: registry contention
+
+The upload/list paths, multipart fields and VERIFIED/DUPLICATE response contract
+are unchanged. Schema migration now runs at Server startup, not per request.
+S3 publication and GET verification run outside registry transactions; commit
+re-checks ownership, observation hash and revision. Speculative objects may remain
+as orphans after a race or failed commit; operators reconcile them without deletion.
+
+SQLite busy/locked errors during registry operations return **503** with
+`Retry-After: 1`; exhausted optimistic revision retries also return 503 with that
+header. The default registry busy timeout is 0.5s (SQLITE_BUSY_TIMEOUT_SECONDS).
+The current Client retries 503 using its existing bounded backoff and persisted
+attempt budget; parsing Retry-After remains a separate TODO. Do not claim that
+header handling is implemented on the Client. Other unexpected DB failures can
+still return 500; neither path acknowledges an uncommitted observation.
+
+S3 metadata includes nullable s3_bucket, s3_object_key and s3_version_id. For new
+S3 uploads stored_path is an s3:// URI; migrated legacy records can keep a local
+stored_path with separate S3 mapping. The local path in the historical example
+above is not the sole storage representation.

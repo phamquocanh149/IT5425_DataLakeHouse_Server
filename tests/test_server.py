@@ -42,6 +42,7 @@ def setup_test_environment(tmp_path, monkeypatch):
     monkeypatch.setattr(metadata_manager, "metadata_dir", test_metadata_dir)
 
     settings.ensure_directories()
+    metadata_manager.initialize()
     yield test_base
 
 

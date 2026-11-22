@@ -1,0 +1,13 @@
+# GIS worker release, tested locally with Python 3.14; independent of API Python 3.11.
+geopandas==1.2.0
+shapely==2.2.0
+pandas==3.0.6
+pyarrow==25.0.1
+pyogrio==0.13.0
+numpy==2.5.3
+pyproj==3.8.0
+packaging==26.3
+python-dateutil==2.9.0.post0
+tzdata==2026.4
+certifi==2026.7.22
+six==1.17.0

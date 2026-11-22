@@ -1,0 +1,78 @@
+{
+  "date": "2026-11-22",
+  "timezone": "Asia/Saigon",
+  "stage_status": "PARTIAL",
+  "server_tests": {
+    "passed": 130,
+    "real_gis_tests": 5,
+    "new_stage5_tests": 19,
+    "skipped": 0,
+    "warnings": 1,
+    "seconds": 42.07,
+    "command": "USDM_GIS_PYTHON=E:/anaconda/python.exe REQUIRE_GIS_TESTS=1 .venv/Scripts/python.exe -m pytest -q --junitxml=.test-runs/stage5-tests.xml"
+  },
+  "client_tests": {
+    "passed": 59,
+    "seconds": 1.73
+  },
+  "ruff_check_and_format": "PASS",
+  "ci_yaml_parse_and_dependency_check": "PASS local; not a GitHub Actions run",
+  "client_commit_pin": "63a4773f501d5eb55be835d6852564bfd6fa0ebb",
+  "synthetic_real_gis_drill": {
+    "status": "PASS",
+    "observations": 1,
+    "builds": 1,
+    "gold_rows": 2,
+    "replay_skipped": 1,
+    "replay_failed": 0
+  },
+  "real_usdm_local_drill": {
+    "source_week": "2020-01-07",
+    "status": "PASS",
+    "runtime_root": ".test-runs/stage5-real-13ad1c10d67248a2a34292b731783dac",
+    "observations": 1,
+    "builds": 1,
+    "gold_rows": 3259,
+    "archived_recipe_files": 2,
+    "data_recovery_seconds": 0.406,
+    "checkpoint_sha256": "1dd2f91baa5c151ffa1c10ba15cee81aae4c46e97a0fa795b41828d4074b29de",
+    "scope": "one-week isolated local data recovery, not service RTO or off-host acceptance"
+  },
+  "not_executed": [
+    "Clean Docker API/worker builds and image scans: Docker engine unavailable; Trivy not found",
+    "Real MinIO full-volume restore drill: Docker engine unavailable",
+    "Remote GitHub Actions and branch protection configuration",
+    "Off-host backup verification: destination not supplied",
+    "Production service RPO/RTO acceptance"
+  ],
+  "historical_recipe_recovery": {
+    "status": "PASS exact SHA-256 match",
+    "worker_sha256": "54054e45f09b47c82d50f91e6f2f870c60f32b98f0053d9f10b12597c1a49cfa",
+    "path": "vendor/usdm/recipes/54054e45f09b47c82d50f91e6f2f870c60f32b98f0053d9f10b12597c1a49cfa.py",
+    "method": "Reconstructed pre-library-version-recording worker; bytes matched trusted historical hash; original manifests unchanged"
+  },
+  "followup_tests": {
+    "passed": 19,
+    "seconds": 5.48,
+    "scope": "Stage 5 tests after exact historical recipe recovery and restore-to-backup recipe preservation change"
+  },
+  "full_historical_local_restore": {
+    "status": "PASS",
+    "checkpoint": ".test-runs/stage5-history-f4c2fbb8a9724bb9a3219938ae7076c6",
+    "checkpoint_sha256": "40414742d717f359dc9c134e9313efdce63de539cc383fd3b8acd7fcbf74bf6a",
+    "observations": 130,
+    "historical_builds": 131,
+    "historical_gold_rows": 426929,
+    "recipe_files": 3,
+    "data_recovery_seconds": 31.39,
+    "current_weeks": 130,
+    "current_gold_rows_matched": 423670,
+    "silver_features": 625,
+    "geometry_repairs": 61,
+    "mismatched_cells": 0,
+    "missing_cells": 0,
+    "extra_cells": 0,
+    "source_and_product_hashes_verified": true,
+    "scope": "same-host local full historical checkpoint; not off-host or service RTO acceptance"
+  }
+}

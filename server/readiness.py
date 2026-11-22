@@ -1,5 +1,6 @@
 """Bounded dependency probes. Never initialize or silently recreate a missing registry."""
 
+from contextlib import closing
 import json
 import logging
 import sqlite3
@@ -55,7 +56,7 @@ def validate_storage():
     access_probe()
     if settings.STORAGE_BACKEND != "s3":
         return
-    with s3_probe_client() as client:
+    with closing(s3_probe_client()) as client:
         bucket = settings.S3_BUCKET_BRONZE
         client.head_bucket(Bucket=bucket)
         client.list_objects_v2(Bucket=bucket, MaxKeys=1)
@@ -105,7 +106,7 @@ class Readiness:
                 sqlite_probe()
                 access_probe()
                 if settings.STORAGE_BACKEND == "s3":
-                    with s3_probe_client() as client:
+                    with closing(s3_probe_client()) as client:
                         client.head_bucket(Bucket=settings.S3_BUCKET_BRONZE)
                 self.ok = True
             except Exception as exc:

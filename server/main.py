@@ -28,8 +28,7 @@ async def lifespan(app: FastAPI):
     """Lifecycle event to initialize directories and check configuration."""
     logger.info("Initializing Climate Data Lake Server...")
     settings.ensure_directories()
-    with metadata_manager.connection():
-        pass
+    await run_in_threadpool(metadata_manager.initialize)
     await run_in_threadpool(initialize_access_store)
     await run_in_threadpool(validate_storage)
     readiness.reset()
@@ -53,6 +52,15 @@ app = FastAPI(
 )
 
 app.add_middleware(AccessMiddleware)
+
+# Portal is opt-in; existing collectors and deployment defaults remain unchanged.
+from server.portal.config import PortalConfig  # noqa: E402
+
+portal_config = PortalConfig()
+if portal_config.enabled:
+    from server.portal.app import install_portal
+
+    install_portal(app, portal_config)
 
 # CORS setup (allow local development if needed)
 # No browser cross-origin access is needed by the HTTPX client.
@@ -128,7 +136,8 @@ async def list_uploads(
         from fastapi import HTTPException
 
         raise HTTPException(403, "Source is not authorized")
-    return metadata_manager.list_all(
+    return await run_in_threadpool(
+        metadata_manager.list_all,
         source_filter=source,
         client_id=None if client_id == "admin" else client_id,
         sources=None if client_id == "admin" else allowed_sources(client_id),

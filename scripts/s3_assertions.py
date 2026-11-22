@@ -39,6 +39,7 @@ def main():
         settings.BASE_DIR = Path(directory)
         metadata_manager.metadata_dir = Path(directory) / "metadata"
         settings.ensure_directories()
+        metadata_manager.initialize()
         # A real SQLite commit failure leaves a verified S3 object, but no observation.
         original_connect = sqlite3.connect
 

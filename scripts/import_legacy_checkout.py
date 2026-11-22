@@ -4,6 +4,7 @@ import argparse
 import json
 import shutil
 import sqlite3
+from contextlib import closing
 import sys
 import uuid
 from pathlib import Path
@@ -30,9 +31,13 @@ def run(root, apply=False):
     print(json.dumps({"apply": apply, "files": [p.name for p, _, _ in candidates]}))
     if not apply:
         return
+    metadata_manager.initialize()
     backup = metadata_manager.metadata_dir / "backups" / ("before-import-" + uuid.uuid4().hex)
     backup.mkdir(parents=True)
-    with metadata_manager.connection() as db, sqlite3.connect(backup / "ingestion.sqlite3") as dest:
+    with (
+        metadata_manager.connection() as db,
+        closing(sqlite3.connect(backup / "ingestion.sqlite3")) as dest,
+    ):
         db.backup(dest)
     for path, source, target in candidates:
         target.parent.mkdir(parents=True, exist_ok=True)

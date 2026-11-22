@@ -1,60 +1,33 @@
-# Storage backup, restore and native migration
+# Legacy local backend only
 
-Stop writers for a consistent pair of Bronze and SQLite snapshots. Do not copy only
-ingestion.sqlite3 while a process is writing: WAL/SHM may contain committed state.
-These commands are operator instructions; no existing production data was migrated.
+**This file applies ONLY to `STORAGE_BACKEND=local` (legacy native Server).**
+It is NOT an S3 backup/restore runbook. Current `compose.yaml` forces `s3`:
+API volume `bronze` contains temp/legacy files; actual objects live in `minio-data`.
+An archive of `/storage/data_lake` + `/storage/metadata` is NOT a complete S3 backup.
 
-## Backup Compose volumes (PowerShell)
+## Single canonical S3 procedure
 
-Use the same project name/options as deployment. `docker compose create api` creates the
-container/volumes without starting writers if necessary. Backup archives contain sensitive
-raw data and metadata; store them privately. Each backup gets a fresh directory.
+Follow [MINIO_OPERATIONS.md: Backup and restore](MINIO_OPERATIONS.md#backup-and-restore).
+It requires a stopped full MinIO volume snapshot, SQLite Connection.backup(), a manifest
+with checksums, fresh restore volumes, reconciliation and a recurring restore drill.
+The old API-only Compose tar/restore commands have been removed to prevent accidental
+restoration of a registry whose S3 objects were never backed up.
 
-```powershell
-docker compose stop api
-$backupDir = Join-Path (Get-Location) ('backup-' + (Get-Date -Format yyyyMMdd-HHmmss))
-New-Item -ItemType Directory -Path $backupDir
-docker compose run --rm --no-deps --user 0:0 --cap-add DAC_OVERRIDE --cap-add CHOWN --cap-add FOWNER --entrypoint tar -v "${backupDir}:/backup" api -czf /backup/storage.tgz -C /storage data_lake metadata
-Get-FileHash (Join-Path $backupDir storage.tgz) -Algorithm SHA256
-docker compose up -d --wait
-```
+## Legacy local scope and migration notes
 
-Keep archive and checksum together. A stopped writer plus both directories preserves SQLite
-WAL consistency and observation-to-blob paths. Temporary files are retained for reconciliation.
+- Confirm the actual backend is local and observations do not depend on S3 mappings.
+  If s3_object_key is populated, use the complete canonical S3 procedure.
+- Pause the native API and all writers. Snapshot ingestion.sqlite3 AND access.sqlite3
+  using sqlite3.Connection.backup() into new files. Preserve local Bronze, legacy JSON
+  and metadata/backups from the same paused checkpoint. Do not copy a live DB without WAL.
+- Keep an inventory of file_id/path/hash/size, archive checksums and a non-secret manifest;
+  store private configuration separately with controlled access.
+- Restore legacy into NEW directories with explicit STORAGE_BACKEND=local. Check both
+  databases' integrity, every raw hash and reconciliation before resuming writers.
+  Do not start current S3 Compose with only a local archive and call it a complete restore.
+- To migrate to S3, preserve originals, dry-run scripts/import_legacy_checkout.py before
+  --apply, then use scripts/migrate_bronze_s3.py and reconciliation as described in the
+  MinIO runbook. Do not silently rewrite ownership/file_id/dataset_key/path conflicts.
 
-## Restore into NEW volumes, leaving existing data untouched
-
-Validate the checksum and use only a trusted archive you created. Start from the same source
-and keys, choose a new unused Compose project name, and keep the original deployment stopped
-to avoid competing for port 8000. Never extract over an existing nonempty deployment.
-
-```powershell
-$restoreProject = 'climate-restore-' + (Get-Date -Format yyyyMMddHHmmss)
-# Set $backupDir to the backup directory verified above.
-docker compose -p $restoreProject create api
-docker compose -p $restoreProject run --rm --no-deps --user 0:0 --cap-add DAC_OVERRIDE --cap-add CHOWN --cap-add FOWNER --entrypoint tar -v "${backupDir}:/backup:ro" api -xzf /backup/storage.tgz -C /storage
-docker compose -p $restoreProject run --rm --no-deps --user 0:0 --cap-add DAC_OVERRIDE --cap-add CHOWN --cap-add FOWNER --entrypoint chown api -R 10001:10001 /storage/data_lake /storage/metadata
-docker compose -p $restoreProject run --rm --no-deps api python scripts/reconcile_storage.py --checksum
-docker compose -p $restoreProject up -d --wait
-```
-
-Review reconciliation output and authenticated `/uploads` before directing the Client to the
-restored service. Always use `-p $restoreProject` thereafter. Keep original volumes and backup
-until recovery is accepted. No automatic volume deletion is provided.
-
-## Existing native data to Docker
-
-Stop native Uvicorn and all upload writers. Back up the entire native `data_lake` and `metadata`
-directories together; keep the original host directories. If JSON metadata needs migration,
-run `scripts/migrate_metadata.py` with native settings first and review its backup/report.
-Create a fresh Compose project as above. Create `storage.tgz` with the two relative top-level
-directories `data_lake` and `metadata` (Windows `tar -czf storage.tgz data_lake metadata`, from
-the native Server root, with writers stopped). Restore using the procedure above; ownership
-must be adjusted to UID/GID 10001 because Windows archive ownership differs.
-
-Default stored paths are relative (`data_lake/bronze/...`) and remain valid under `/storage`.
-If historical settings used custom/absolute storage paths, inspect those records and plan an
-explicit path mapping before migration; do not rewrite records or move/delete raw blindly.
-Docker does not read the host `.env` storage paths: Compose deliberately mounts isolated
-named volumes at `/storage/data_lake` and `/storage/metadata`. Pending Client jobs stay on
-the native Client and must not be moved into the Server volumes.
+These are legacy compatibility notes, not a second S3 runbook. Client pending snapshots
+remain on the Client and must be preserved independently of Server deployment migration.

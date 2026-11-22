@@ -16,7 +16,12 @@ Máy Server: FastAPI → MinIO Bronze
                   └→ SQLite trên persistent volume
 ```
 
-Chỉ Bronze hoạt động thật. Silver, Gold và Warehouse được tạo sẵn, chưa có ETL. Client không truy cập MinIO trực tiếp; GitHub chứa code, không trung chuyển dữ liệu.
+Stage 3 đã có USDM Bronze → Silver GeoParquet → Gold CSV/SQLite local.
+Stage 4 có Portal React/TypeScript + FastAPI để xem/tải ba tầng, bản đồ, quality,
+lineage, current/history và quản lý quyền. Demo: **http://127.0.0.1:8010/portal/**.
+Xem [hướng dẫn demo và vận hành](docs/STAGE4_IMPLEMENTATION.md),
+[checklist nghiệm thu](docs/STAGE4_ACCEPTANCE.md). Stage 4 đang chờ user UAT,
+chưa Completed. Client không truy cập MinIO trực tiếp; GitHub chứa code, không trung chuyển dữ liệu.
 
 ## 1. Chuẩn bị và clone
 
@@ -144,6 +149,14 @@ docker compose up -d --wait
 
 ## 7. Migration, backup và phục hồi
 
+**Stage 2 — fix lỗi:** [runbook S3 duy nhất](docs/MINIO_OPERATIONS.md#backup-and-restore)
+bao gồm SQLite `.backup()`, snapshot **toàn volume MinIO đã dừng**, manifest/checksum
+và restore vào volumes mới. `docs/STORAGE_OPERATIONS.md` chỉ dành cho legacy local;
+backup hai volume API không chứa đủ object S3. RPO mục tiêu <=24h, RTO mục tiêu <=2h;
+backup hằng ngày/drill hằng tháng cần được operator cấu hình và đo nghiệm thu.
+Tiến độ chi tiết, phần DONE và Needs Verification: [AGENT.md](AGENT.md#stage-2--fix-lỗi-và-củng-cố-hệ-thống-còn-gate-vận-hành).
+
+
 Dữ liệu native không tự xuất hiện trong Docker volume. Xem [hướng dẫn migration/backup/restore](docs/MINIO_OPERATIONS.md), gồm import legacy checkout, dry-run, backup SQLite, sao lưu MinIO và rollback.
 
 Nếu raw/metadata cũ đã nằm trong Docker volume và MinIO đã được khởi tạo:
@@ -193,3 +206,11 @@ Smoke dùng project, bucket, registry và credentials riêng để kiểm tra Cl
 [Báo cáo tích hợp](MINIO_INTEGRATION_REPORT.md) ghi digest, kết quả test và migration tại môi trường triển khai. Hai image bên thứ ba bắt buộc có CVE High/Critical và chưa xác minh chuỗi chữ ký nguồn gốc. Kết quả chức năng PASS không có nghĩa hệ thống đã được chấp thuận an toàn production. Xem [scan MinIO](docs/security/minio-cves.md), [scan mc](docs/security/mc-cves.md).
 
 Collector hiện còn là khung tích hợp; dữ liệu mẫu chỉ dùng thử truyền file, không phải bộ dữ liệu khoa học đã kiểm định.
+
+## Stage 5 — Checkpoint và CI release
+
+Đã thêm checkpoint toàn pipeline (Bronze, registry, products, warehouse và recipe),
+restore vào root độc lập, mandatory GIS CI, pin Client commit, worker image và scan/SBOM
+cho API/worker/MinIO/mc. Xem [runbook và gate nghiệm thu](docs/STAGE5_PRODUCTION_READINESS.md).
+Local tests/drill đã đạt; MinIO thật, Docker/remote CI, off-host và service RPO/RTO
+còn chờ nghiệm thu. Visualization/dashboard không thuộc thay đổi Stage 5.

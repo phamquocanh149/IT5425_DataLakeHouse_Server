@@ -1,6 +1,15 @@
 **
 !requirements.txt
+!requirements-gis.txt
 !server/
 !server/*.py
+!server/portal/
+!server/portal/*.py
 !scripts/
 !scripts/*.py
+!vendor/
+!vendor/usdm/
+!vendor/usdm/*.py
+!vendor/usdm/PROVENANCE.json
+!vendor/usdm/recipes/
+!vendor/usdm/recipes/*.py

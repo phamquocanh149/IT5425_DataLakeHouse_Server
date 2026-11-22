@@ -56,8 +56,8 @@ class MetadataManager:
     def db_path(self):
         return self.metadata_dir / "ingestion.sqlite3"
 
-    @contextmanager
-    def connection(self):
+    def initialize(self):
+        """Create/migrate once at startup (or explicitly in an offline CLI)."""
         self.metadata_dir.mkdir(parents=True, exist_ok=True)
         db = sqlite3.connect(self.db_path, timeout=30)
         db.row_factory = sqlite3.Row
@@ -106,10 +106,51 @@ class MetadataManager:
             for column in ("s3_bucket", "s3_object_key", "s3_version_id"):
                 if column not in columns:
                     db.execute(f"ALTER TABLE observations ADD COLUMN {column} TEXT")
-            db.execute("COMMIT")
-            yield db
+            db.commit()
         finally:
             db.close()
+
+    @contextmanager
+    def connection(self):
+        """Open an existing registry; requests never create or migrate schema."""
+        from fastapi import HTTPException
+
+        db = None
+        try:
+            db = sqlite3.connect(
+                self.db_path.resolve().as_uri() + "?mode=rw",
+                uri=True,
+                timeout=settings.SQLITE_BUSY_TIMEOUT_SECONDS,
+            )
+            db.row_factory = sqlite3.Row
+            db.execute("PRAGMA synchronous=FULL")
+            db.execute("PRAGMA foreign_keys=ON")
+            yield db
+        except sqlite3.OperationalError as exc:
+            code = getattr(exc, "sqlite_errorcode", 0) & 0xFF
+            if code in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED) or "locked" in str(exc).lower():
+                raise HTTPException(
+                    503, "Registry busy; retry later", headers={"Retry-After": "1"}
+                ) from exc
+            raise
+        finally:
+            if db is not None:
+                db.close()
+
+    def _state(self, db, identity, sha256, client_id):
+        from fastapi import HTTPException
+
+        current = db.execute(
+            "SELECT * FROM observations WHERE source=? AND source_date=? AND dataset_key=? AND is_current=1",
+            identity,
+        ).fetchone()
+        previous = db.execute(
+            "SELECT * FROM observations WHERE source=? AND source_date=? AND dataset_key=? AND sha256=?",
+            (*identity, sha256),
+        ).fetchone()
+        if any(row and row["client_id"] != client_id for row in (current, previous)):
+            raise HTTPException(403, "Dataset belongs to another identity")
+        return dict(current) if current else None, dict(previous) if previous else None
 
     def _insert(self, db, record):
         values = record.model_dump()
@@ -217,24 +258,16 @@ class MetadataManager:
         from .storage import S3Storage, object_key
 
         storage = S3Storage()
+        identity = (source, source_date, dataset_key)
         try:
-            with self.connection() as db:
-                db.execute("BEGIN IMMEDIATE")
-                identity = (source, source_date, dataset_key)
-                current = db.execute(
-                    "SELECT * FROM observations WHERE source=? AND source_date=? AND dataset_key=? AND is_current=1",
-                    identity,
-                ).fetchone()
-                if current and current["client_id"] != client_id:
-                    raise HTTPException(403, "Dataset belongs to another identity")
-                previous = db.execute(
-                    "SELECT * FROM observations WHERE source=? AND source_date=? AND dataset_key=? AND sha256=?",
-                    (*identity, sha256),
-                ).fetchone()
+            # Optimistic publication: no DB connection/transaction spans S3 I/O.
+            # A competing revision can leave a speculative orphan; never delete raw.
+            for _ in range(8):
+                with self.connection() as db:
+                    db.execute("BEGIN")
+                    current, previous = self._state(db, identity, sha256, client_id)
                 if previous:
-                    record = FileMetadata(**dict(previous))
-                    if record.client_id != client_id:
-                        raise HTTPException(403, "Observation belongs to another identity")
+                    record = FileMetadata(**previous)
                     if record.status != "VERIFIED" or not record.s3_object_key:
                         raise HTTPException(
                             503, "Stored content requires migration or reconciliation"
@@ -242,41 +275,54 @@ class MetadataManager:
                     storage.verify(
                         record.s3_object_key, record.sha256, record.size_bytes, record.s3_bucket
                     )
+                else:
+                    revision = current["revision"] + 1 if current else 1
+                    key = object_key(source, source_date, dataset_key, revision, sha256, filename)
+                    version = storage.publish(temporary, key, sha256, size)
+                    uri = f"s3://{storage.bucket}/{key}"
+                    record = FileMetadata(
+                        file_id="file_" + uuid.uuid4().hex,
+                        source=source,
+                        source_date=source_date,
+                        dataset_key=dataset_key,
+                        original_filename=filename,
+                        client_id=client_id,
+                        stored_path=uri,
+                        sha256=sha256,
+                        size_bytes=size,
+                        received_at=datetime.now(timezone.utc).isoformat(),
+                        revision=revision,
+                        previous_file_id=current["file_id"] if current else None,
+                        s3_bucket=storage.bucket,
+                        s3_object_key=key,
+                        s3_version_id=version,
+                    )
+                with self.connection() as db:
+                    db.execute("BEGIN IMMEDIATE")
+                    latest, duplicate = self._state(db, identity, sha256, client_id)
+                    if previous:
+                        # Reconcile/migration/revision may have changed this receipt while
+                        # GET was in flight. Re-read and verify the new mapping next round.
+                        if duplicate != previous:
+                            continue
+                    else:
+                        if duplicate or latest != current:
+                            continue
+                        db.execute(
+                            "INSERT OR IGNORE INTO content_blobs VALUES (?,?,?)",
+                            (sha256, record.stored_path, size),
+                        )
+                        db.execute(
+                            "UPDATE observations SET is_current=0 WHERE source=? AND source_date=? AND dataset_key=?",
+                            identity,
+                        )
+                        self._insert(db, record)
                     db.commit()
-                    temporary.unlink(missing_ok=True)
-                    return record, True
-                revision = current["revision"] + 1 if current else 1
-                key = object_key(source, source_date, dataset_key, revision, sha256, filename)
-                version = storage.publish(temporary, key, sha256, size)
-                uri = f"s3://{storage.bucket}/{key}"
-                db.execute(
-                    "INSERT OR IGNORE INTO content_blobs VALUES (?,?,?)", (sha256, uri, size)
-                )
-                record = FileMetadata(
-                    file_id="file_" + uuid.uuid4().hex,
-                    source=source,
-                    source_date=source_date,
-                    dataset_key=dataset_key,
-                    original_filename=filename,
-                    client_id=client_id,
-                    stored_path=uri,
-                    sha256=sha256,
-                    size_bytes=size,
-                    received_at=datetime.now(timezone.utc).isoformat(),
-                    revision=revision,
-                    previous_file_id=current["file_id"] if current else None,
-                    s3_bucket=storage.bucket,
-                    s3_object_key=key,
-                    s3_version_id=version,
-                )
-                db.execute(
-                    "UPDATE observations SET is_current=0 WHERE source=? AND source_date=? AND dataset_key=?",
-                    identity,
-                )
-                self._insert(db, record)
-                db.commit()
                 temporary.unlink(missing_ok=True)
-                return record, False
+                return record, previous is not None
+            raise HTTPException(
+                503, "Concurrent revision changes; retry later", headers={"Retry-After": "1"}
+            )
         except (BotoCoreError, ClientError, ValueError) as exc:
             logger.warning("S3 verification failed: %s", type(exc).__name__)
             raise HTTPException(

@@ -1,0 +1,32 @@
+{
+  "weeks": 130,
+  "silver_features": 625,
+  "repaired_geometries": 61,
+  "matched_cells": 423670,
+  "mismatched_cells": 0,
+  "missing_cells": 0,
+  "extra_cells": 0,
+  "source_and_product_hashes_verified": true,
+  "date": "2026-11-21",
+  "backend": "local",
+  "full_replay": {
+    "succeeded": 130,
+    "failed": 0
+  },
+  "replay": {
+    "succeeded": 0,
+    "skipped": 130,
+    "failed": 0
+  },
+  "tests": {
+    "full_suite_passed": 81,
+    "gis_tests": 5,
+    "warnings": 1
+  },
+  "runtime_root": ".test-runs\\usdm-stage3",
+  "limitations": [
+    "S3 Silver/Gold not implemented",
+    "Real MinIO not exercised",
+    "Medallion restore drill not exercised"
+  ]
+}

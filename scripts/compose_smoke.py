@@ -50,7 +50,13 @@ def main():
         empty.write_text("")
         override = temp / "override.yaml"
         override.write_text(
-            'services:\n  api:\n    ports: !override\n      - "127.0.0.1:0:8000"\n'
+            "services:\n  api:\n"
+            + (
+                "    image: " + json.dumps(env["CLIMATE_API_IMAGE"]) + "\n    pull_policy: never\n"
+                if env.get("CLIMATE_API_IMAGE")
+                else ""
+            )
+            + '    ports: !override\n      - "127.0.0.1:0:8000"\n'
             '    environment:\n      COLLECTOR_SOURCES: \'["usdm","noaa","usgs","nldas"]\'\n'
         )
         command = [
@@ -110,7 +116,14 @@ print(json.dumps(sorted(r['file_id'] for r in rows)))
             )
 
         try:
-            compose("up", "-d", "--build", "--wait", "--wait-timeout", "120")
+            compose(
+                "up",
+                "-d",
+                *(["--no-build"] if env.get("CLIMATE_API_IMAGE") else ["--build"]),
+                "--wait",
+                "--wait-timeout",
+                "120",
+            )
             compose("run", "--rm", "minio-init")  # Idempotency of provisioning.
             import boto3
             from botocore.exceptions import ClientError

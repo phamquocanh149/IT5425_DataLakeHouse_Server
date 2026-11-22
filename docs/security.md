@@ -68,7 +68,7 @@ Compose no longer accepts the personal Docker Hub image overrides. It requires
 `MINIO_DIGEST=sha256:...` and `MINIO_MC_DIGEST=sha256:...` and constructs only
 `quay.io/minio/minio@...` and `quay.io/minio/mc@...`. Obtain digests from a trusted
 publisher manifest/release, review provenance, then run
-`python scripts/verify_images.py` with Docker and Trivy installed. It pulls from
+`python scripts/verify_images.py --api-image <tested-api-image> --worker-image <tested-worker-image>` with Docker and Trivy installed. It pulls from
 the official namespace, writes CycloneDX SBOMs and JSON vulnerability reports,
 and fails on HIGH/CRITICAL findings. Retain `security-artifacts/` with release
 evidence. CI uses the same gate; configure repository variables MINIO_DIGEST and
@@ -101,3 +101,18 @@ Do not automatically apply irreversible compliance retention to existing raw dat
 These flags verify provisioned controls; they do not provision KMS or migrate data.
 Reference: https://min.io/docs/minio/linux/administration/server-side-encryption/server-side-encryption-sse-kms.html
 and https://min.io/docs/minio/linux/administration/object-management/object-retention.html.
+
+## Stage 2 registry lifecycle
+
+Registry schema creation/migration runs explicitly during startup, outside the
+request path. Normal connections open an existing database (mode=rw), set local
+PRAGMAs and do not acquire a schema writer lock. S3 network I/O runs outside
+transactions; short optimistic commit transactions re-check ownership/hash/revision.
+Busy/locked registry operations return 503 with Retry-After: 1 and a configurable
+SQLITE_BUSY_TIMEOUT_SECONDS (default 0.5, maximum 5). This is not a total request
+deadline. Readiness still probes write availability and can briefly report 503
+during genuine contention; its cache/timeout behavior is unchanged.
+
+Stage 5 also scans the exact locally built API/worker image IDs and emits their SBOMs.
+See [release CI and checkpoint gates](STAGE5_PRODUCTION_READINESS.md). A successful
+scan manifest is removed before a new run, so a failed scan cannot leave a stale PASS.

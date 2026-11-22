@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     S3_ACCESS_KEY: str = ""
     S3_SECRET_KEY: str = ""
 
+    SQLITE_BUSY_TIMEOUT_SECONDS: float = Field(0.5, gt=0, le=5)
+
     READINESS_CACHE_SECONDS: float = Field(3, ge=0, le=10)
     READINESS_TIMEOUT_SECONDS: float = Field(0.5, gt=0, le=2)
     API_KEYS: list[APIKeyRecord] = Field(default_factory=list)

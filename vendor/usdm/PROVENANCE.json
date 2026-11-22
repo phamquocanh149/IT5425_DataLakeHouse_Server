@@ -1,0 +1,13 @@
+{
+  "origin": "data_crawl_USDM/silver/scripts/usdm_bronze_to_silver.py",
+  "copied_on": "2026-11-22",
+  "sha256": "e7ff1d162e80c989b79302ec7914818ad39980f6a3a6b319dd20577b187fc555",
+  "historical_recipes": {
+    "recipes/54054e45f09b47c82d50f91e6f2f870c60f32b98f0053d9f10b12597c1a49cfa.py": {
+      "sha256": "54054e45f09b47c82d50f91e6f2f870c60f32b98f0053d9f10b12597c1a49cfa",
+      "recovery": "Reconstructed pre-library-version-recording worker; exact bytes authenticated against the SHA-256 in the original Stage 3 pilot build manifest. Not selected as the current worker."
+    }
+  },
+  "purpose": "Pinned source cleaner for release GIS tests and offline worker fallback",
+  "policy": "Preserve bytes; update hash with a reviewed scientific recipe change. Original source repository is unchanged."
+}
