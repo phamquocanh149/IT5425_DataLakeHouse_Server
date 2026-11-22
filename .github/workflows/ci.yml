@@ -86,7 +86,7 @@ jobs:
       - name: Install Trivy
         uses: aquasecurity/setup-trivy@e07451d2e059ed86c2870430ea286b3a9e0bf241
         with:
-          version: v0.68.2
+          version: v0.76.2
       - name: Scan all four images and generate SBOMs
         working-directory: climate-platform
         run: python scripts/verify_images.py --api-image "$CLIMATE_API_IMAGE" --worker-image "$CLIMATE_WORKER_IMAGE"

@@ -56,7 +56,11 @@ src/climate_platform/
   infrastructure/      # object_store.py, readiness.py
 ```
 
-Lệnh chạy (sau `pip install -e .`, hoặc dùng `uvicorn ...` trực tiếp như Docker):
+Lệnh chạy sau `python -m pip install .` (thêm `[portal]` nếu bật Portal).
+Editable install `python -m pip install -e .` dùng cho phát triển; trên Python 3.11
+Windows, setuptools có thể lỗi encoding nếu đường dẫn chứa tiếng Việt. Khi đó dùng
+cài đặt thường hoặc wheel. Kết quả kiểm chứng và các gate còn mở nằm trong
+[Phase 1 closeout](docs/PHASE1_CLOSEOUT.md).
 
 ```powershell
 uvicorn climate_platform.api.app:app --host 127.0.0.1 --port 8000   # API
