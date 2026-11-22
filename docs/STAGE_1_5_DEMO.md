@@ -17,14 +17,14 @@ N?u c? JSON l?ch s?, ch?y migration v? xem report tr??c demo; kh?ng c?n cho d? l
 ```powershell
 cd climate-platform
 $env:DEBUG='False'
-.\.venv\Scripts\python.exe -m uvicorn server.main:app --host 127.0.0.1 --port 8000
+.\.venv\Scripts\python.exe -m uvicorn climate_platform.api.app:app --host 127.0.0.1 --port 8000
 ```
 
 ## 2. Health v? upload USDM (terminal B, ~1 ph?t)
 
 ```powershell
 cd climate-collector
-.\.venv\Scripts\python.exe scripts/check_server.py
+.\.venv\Scripts\python.exe scripts/cross_repo_smoke.py
 .\.venv\Scripts\python.exe scripts/generate_sample.py --source usdm
 .\.venv\Scripts\python.exe scripts/send_file.py --file data/pending/sample_usdm.csv --source usdm --date 2021-06-22 --dataset-key demo/usdm
 ```

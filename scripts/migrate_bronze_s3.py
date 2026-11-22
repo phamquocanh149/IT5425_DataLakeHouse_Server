@@ -5,10 +5,12 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from server.s3_maintenance import local_inventory, migrate_bronze  # noqa: E402
-
-from server.metadata import metadata_manager  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from climate_platform.catalog.repository import metadata_manager  # noqa: E402
+from climate_platform.catalog.s3_maintenance import (  # noqa: E402
+    local_inventory,
+    migrate_bronze,
+)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)

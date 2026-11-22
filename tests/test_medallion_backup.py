@@ -6,7 +6,7 @@ import sqlite3
 import pytest
 
 from scripts.medallion_backup import create, restore, verify, reconcile, pipeline_lock
-from server.config import settings
+from climate_platform.config import settings
 from tests.test_usdm import pipeline, run  # noqa: F401
 
 
@@ -36,7 +36,7 @@ def test_restore_history_and_replay(pipeline, tmp_path, monkeypatch):
     with sqlite3.connect(target / "metadata/access.sqlite3") as db:
         assert db.execute("SELECT bytes FROM usage").fetchone()[0] == 123
     monkeypatch.setattr(settings, "BASE_DIR", target)
-    from server.usdm import run_pipeline
+    from climate_platform.datasets.usdm.processor import run_pipeline
 
     assert run_pipeline(pipeline[0], target / "products", "fixture-python")["skipped"] == 1
     with pytest.raises(ValueError, match="NEW"):

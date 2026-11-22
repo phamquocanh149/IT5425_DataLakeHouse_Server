@@ -14,6 +14,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "src"))
 
 
 def main():
@@ -37,8 +38,8 @@ def main():
             METADATA_DIR="metadata",
             TEMP_DIR="data_lake/temp",
         )
-        from server.config import settings
-        from server.usdm import run_pipeline
+        from climate_platform.config import settings
+        from climate_platform.datasets.usdm.processor import run_pipeline
         from scripts.medallion_backup import create, restore, reconcile, verify
 
         code = """

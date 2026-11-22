@@ -34,7 +34,7 @@ npm.cmd --prefix frontend run build
 
 Demo chỉ bind 127.0.0.1, từ chối host/client ngoài loopback và không tin forwarded
 headers. Demo IdP có chooser công khai trên localhost; **không dùng làm IdP production**.
-Không mount module `server.portal.demo` trong server production.
+Không mount module `climate_platform.api.portal.demo` trong server production.
 
 ## Dữ liệu thật và cấu trúc
 
@@ -76,8 +76,8 @@ atomic. Không ghi đè release ID. GIS không chạy trong API process.
 
 ## Module và tích hợp
 
-- `server/main.py`: opt-in `PORTAL_ENABLED`; mặc định tắt, giữ nguyên API collector.
-- `server/portal/auth.py`, `store.py`: OIDC Code + PKCE/nonce/state, RS256/JWKS,
+- `src/climate_platform/api/app.py`: opt-in `PORTAL_ENABLED`; mặc định tắt, giữ nguyên API collector.
+- `src/climate_platform/api/portal/auth.py`, `store.py`: OIDC Code + PKCE/nonce/state, RS256/JWKS,
   cookie HttpOnly, CSRF/Origin, role/grants kiểm tra mỗi request, audit transaction.
 - `api.py`, `app.py`: catalog/selection/preview/map/download và Admin API trong
   `/api/portal/v1`; SPA cùng origin `/portal/`. Demo dùng cùng module cài routes.

@@ -44,7 +44,7 @@ resets the daily window. 429 includes Retry-After; accounting failure returns 50
 Keep the metadata volume persistent. Multi-host deployment requires a shared
 transactional limiter; do not place SQLite on a network filesystem.
 
-Structured `climate_server.audit` events cover authenticated API requests and
+Structured `climate_platform.audit` events cover authenticated API requests and
 denials, including administrator metadata reads, identity, key ID, method, status,
 UTC timestamp and bytes received. No credentials or request body are logged.
 Collect stdout into restricted, durable central logging with an explicit retention

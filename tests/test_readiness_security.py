@@ -9,10 +9,10 @@ import pytest
 from botocore.exceptions import ClientError
 from fastapi import HTTPException
 
-from server.access import authenticate, charge
-from server.config import APIKeyRecord, settings
-from server.metadata import metadata_manager
-from server.readiness import readiness, validate_storage
+from climate_platform.api.access import authenticate, charge
+from climate_platform.catalog.repository import metadata_manager
+from climate_platform.config import APIKeyRecord, settings
+from climate_platform.infrastructure.readiness import readiness, validate_storage
 from tests.test_server import client, setup_test_environment  # noqa: F401
 
 
@@ -47,7 +47,7 @@ def test_writer_lock_and_recovery(client, monkeypatch):
 
 
 def test_s3_failure_cached_and_recovery(client, monkeypatch):
-    import server.readiness as module
+    import climate_platform.infrastructure.readiness as module
 
     fake = MagicMock()
     fake.__enter__.return_value = fake
@@ -64,7 +64,7 @@ def test_s3_failure_cached_and_recovery(client, monkeypatch):
 
 
 def test_startup_storage_contract(client, monkeypatch):
-    import server.readiness as module
+    import climate_platform.infrastructure.readiness as module
 
     fake = MagicMock()
     fake.__enter__.return_value = fake
@@ -130,7 +130,7 @@ def test_limits_are_atomic_and_persist(client, monkeypatch):
 
 def test_rate_quota_and_audit(client, monkeypatch, caplog):
     monkeypatch.setattr(settings, "RATE_LIMIT_PER_MINUTE", 1)
-    with caplog.at_level("INFO", logger="climate_server.audit"):
+    with caplog.at_level("INFO", logger="climate_platform.audit"):
         assert client.get("/uploads", headers={"X-API-Key": "test-only-admin"}).status_code == 200
         response = client.get("/uploads", headers={"X-API-Key": "test-only-admin"})
         assert response.status_code == 429 and "Retry-After" in response.headers
@@ -181,7 +181,7 @@ def test_rotation_cannot_reset_client_limits(client, monkeypatch):
 
 
 def test_optional_storage_controls(client, monkeypatch):
-    import server.readiness as module
+    import climate_platform.infrastructure.readiness as module
 
     fake = MagicMock()
     fake.__enter__.return_value = fake
@@ -217,7 +217,7 @@ def test_optional_storage_controls(client, monkeypatch):
 
 def test_startup_rejects_invalid_dependencies(monkeypatch):
     from fastapi.testclient import TestClient
-    import server.main as main
+    import climate_platform.api.app as main
 
     def fail():
         raise RuntimeError("invalid storage configuration")

@@ -12,9 +12,9 @@ from urllib.parse import urlparse
 
 import httpx
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from server.portal.store import Store
-from server.portal.releases import Release
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from climate_platform.api.portal.releases import Release
+from climate_platform.api.portal.store import Store
 
 
 def main():

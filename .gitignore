@@ -54,6 +54,9 @@ security-artifacts/
 release-artifacts/
 .api-venv/
 .gis-venv/
+build/
+dist/
+*.egg-info/
 
 # Portal frontend build and browser QA artifacts
 frontend/node_modules/

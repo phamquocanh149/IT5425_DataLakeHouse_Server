@@ -10,13 +10,13 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from fastapi import UploadFile  # noqa: E402
-from server.config import settings  # noqa: E402
-from server.ingestion import process_file_upload  # noqa: E402
-from server.metadata import metadata_manager  # noqa: E402
-from server.s3_maintenance import migrate_bronze, reconcile_s3  # noqa: E402
-from server.storage import S3Storage  # noqa: E402
+from climate_platform.catalog.repository import metadata_manager  # noqa: E402
+from climate_platform.catalog.s3_maintenance import migrate_bronze, reconcile_s3  # noqa: E402
+from climate_platform.config import settings  # noqa: E402
+from climate_platform.infrastructure.object_store import S3Storage  # noqa: E402
+from climate_platform.ingestion.service import process_file_upload  # noqa: E402
 from botocore.exceptions import ClientError  # noqa: E402
 
 

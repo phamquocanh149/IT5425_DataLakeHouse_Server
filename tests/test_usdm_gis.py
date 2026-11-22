@@ -14,7 +14,8 @@ def test_real_gis_quality_gates(tmp_path, case):
     cleaner = (
         Path(source) / "silver/scripts/usdm_bronze_to_silver.py"
         if source
-        else Path(__file__).resolve().parents[1] / "vendor/usdm/usdm_bronze_to_silver.py"
+        else Path(__file__).resolve().parents[1]
+        / "src/climate_platform/datasets/usdm/resources/usdm_bronze_to_silver.py"
     )
     if not python:
         if os.environ.get("REQUIRE_GIS_TESTS") == "1":
@@ -27,7 +28,7 @@ from pathlib import Path
 import geopandas as gpd
 import pandas as pd
 from shapely.geometry import Polygon, box
-from server.usdm_worker import process
+from climate_platform.datasets.usdm.science import process
 root, source, case = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
 raw = root / "USDM_20200107.shp"
 dm = [1, 4]
@@ -58,7 +59,7 @@ else:
 """
     result = subprocess.run(
         [python, "-c", code, str(tmp_path), str(cleaner), case],
-        cwd=Path(__file__).resolve().parents[1],
+        cwd=str(Path(__file__).resolve().parents[1] / "src"),
         capture_output=True,
         timeout=60,
     )
