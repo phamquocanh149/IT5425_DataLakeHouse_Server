@@ -13,6 +13,7 @@ import httpx
 import pytest
 
 SERVER_ROOT = Path(__file__).resolve().parents[2]
+PACKAGE_PATH = SERVER_ROOT / "src"
 CLIENT_ROOT = Path(
     os.environ.get("CLIENT_REPO_PATH", str(SERVER_ROOT.parent / "climate-collector"))
 ).resolve()
@@ -42,7 +43,7 @@ class LiveServer:
     def start(self):
         env = dict(
             os.environ,
-            PYTHONPATH=str(SERVER_ROOT),
+            PYTHONPATH=os.pathsep.join([str(PACKAGE_PATH), str(SERVER_ROOT)]),
             PYTHONUTF8="1",
             DEBUG="False",
             BASE_DIR=str(self.root),
@@ -63,7 +64,7 @@ class LiveServer:
                 sys.executable,
                 "-m",
                 "uvicorn",
-                "server.main:app",
+                "climate_platform.api.app:app",
                 "--host",
                 "127.0.0.1",
                 "--port",

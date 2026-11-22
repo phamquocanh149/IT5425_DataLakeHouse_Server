@@ -11,16 +11,16 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from server.portal.app import install_portal
-from server.portal.config import PortalConfig
-from server.portal.releases import dataset_id, sha256, verify_release, activate
-from server.portal.store import token_hash
+from climate_platform.api.portal.app import install_portal
+from climate_platform.api.portal.config import PortalConfig
+from climate_platform.api.portal.releases import dataset_id, sha256, verify_release, activate
+from climate_platform.api.portal.store import token_hash
 
 
 def test_reader_timeout_and_size_budget(portal, monkeypatch):
     import subprocess
-    from server.portal import reader
-    from server.portal.store import PortalError
+    from climate_platform.api.portal import reader
+    from climate_platform.api.portal.store import PortalError
 
     large = portal["root"] / "large.json"
     large.write_bytes(b" " * (1024 * 1024 + 1))
@@ -39,7 +39,7 @@ def test_reader_timeout_and_size_budget(portal, monkeypatch):
 
 def test_independent_restore_invalidates_sessions(portal):
     from scripts.portal_backup import copy_portal
-    from server.portal.store import Store
+    from climate_platform.api.portal.store import Store
 
     login(portal)
     destination = portal["root"].parent / (portal["root"].name + "-restore")
@@ -64,7 +64,7 @@ def test_independent_restore_invalidates_sessions(portal):
 def test_oidc_signed_token_validation(portal, monkeypatch, fault):
     import jwt
     from cryptography.hazmat.primitives.asymmetric import rsa
-    from server.portal import auth
+    from climate_platform.api.portal import auth
 
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(key.public_key())) | {"kid": "test"}
@@ -585,7 +585,7 @@ def test_quota_and_concurrency_limits(portal):
     store = portal["store"]
     first = store.acquire(user["user_id"], "download", 2, 60)
     second = store.acquire(user["user_id"], "download", 2, 60)
-    from server.portal.store import PortalError
+    from climate_platform.api.portal.store import PortalError
 
     with pytest.raises(PortalError):
         store.acquire(user["user_id"], "download", 2, 60)

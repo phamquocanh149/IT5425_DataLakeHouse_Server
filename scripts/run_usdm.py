@@ -6,9 +6,9 @@ import logging
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from server.usdm import run_pipeline  # noqa: E402
+from climate_platform.datasets.usdm.processor import run_pipeline  # noqa: E402
 
 
 def main():

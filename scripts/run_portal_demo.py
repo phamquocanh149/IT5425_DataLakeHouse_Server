@@ -4,13 +4,13 @@ import argparse
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 
 def main():
     import uvicorn
-    from server.portal.config import PortalConfig
-    from server.portal.demo import create_demo_app
+    from climate_platform.api.portal.config import PortalConfig
+    from climate_platform.api.portal.demo import create_demo_app
 
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--port", type=int, default=8010)

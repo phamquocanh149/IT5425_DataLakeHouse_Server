@@ -9,10 +9,14 @@ import sys
 import uuid
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from server.config import settings  # noqa: E402
-from server.metadata import FileMetadata, file_hash, metadata_manager  # noqa: E402
-from server.maintenance import migrate_json  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from climate_platform.catalog.maintenance import migrate_json  # noqa: E402
+from climate_platform.catalog.repository import (  # noqa: E402
+    FileMetadata,
+    file_hash,
+    metadata_manager,
+)
+from climate_platform.config import settings  # noqa: E402
 
 
 def run(root, apply=False):

@@ -40,6 +40,36 @@ notepad .env
 
 Nếu đã có checkout/dữ liệu, giữ nguyên `.env` và tên Compose project. Không tạo project mới rồi hiểu nhầm volume mới trống là mất dữ liệu.
 
+### Cấu trúc package và lệnh chạy (Phase 1)
+
+Toàn bộ backend Python là một package cài đặt được: `src/climate_platform/`.
+
+```text
+src/climate_platform/
+  config.py            # Pydantic Settings tập trung
+  cli.py               # console entry points
+  api/                 # app.py, access.py, security.py, portal/
+  ingestion/           # service.py, validation.py
+  processing/          # contracts.py, engine.py, publisher.py
+  datasets/usdm/       # processor.py, science.py, resources/
+  catalog/             # repository.py, maintenance.py, s3_maintenance.py
+  infrastructure/      # object_store.py, readiness.py
+```
+
+Lệnh chạy sau `python -m pip install .` (thêm `[portal]` nếu bật Portal).
+Editable install `python -m pip install -e .` dùng cho phát triển; trên Python 3.11
+Windows, setuptools có thể lỗi encoding nếu đường dẫn chứa tiếng Việt. Khi đó dùng
+cài đặt thường hoặc wheel. Kết quả kiểm chứng và các gate còn mở nằm trong
+[Phase 1 closeout](docs/PHASE1_CLOSEOUT.md).
+
+```powershell
+uvicorn climate_platform.api.app:app --host 127.0.0.1 --port 8000   # API
+climate-usdm-replay --source-root <src> --output-root <out> --gis-python <py>
+python -m climate_platform.datasets.usdm.science --help             # GIS worker
+```
+
+`STAGING`/`PRODUCTION` không được tuyên bố production-ready khi Phase 2/3 (Postgres, S3-first Silver/Gold) chưa hoàn tất.
+
 ## 2. Điền cấu hình `.env`
 
 Điền đủ sáu biến sau bằng credentials riêng, không để trống:

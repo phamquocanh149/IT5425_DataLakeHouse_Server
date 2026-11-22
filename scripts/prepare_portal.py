@@ -5,8 +5,12 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from server.portal.releases import prepare_release, activate, verify_release  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from climate_platform.api.portal.releases import (  # noqa: E402
+    activate,
+    prepare_release,
+    verify_release,
+)
 
 
 def main():

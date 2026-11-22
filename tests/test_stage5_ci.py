@@ -11,7 +11,7 @@ from scripts.recovery_drill import recovery_age
 
 
 def test_vendored_cleaner_matches_reviewed_source_hash():
-    root = Path(__file__).resolve().parents[1] / "vendor/usdm"
+    root = Path(__file__).resolve().parents[1] / "src/climate_platform/datasets/usdm/resources"
     provenance = json.loads((root / "PROVENANCE.json").read_text())
     expected = provenance["sha256"]
     assert hashlib.sha256((root / "usdm_bronze_to_silver.py").read_bytes()).hexdigest() == expected

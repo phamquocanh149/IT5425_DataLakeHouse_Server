@@ -17,6 +17,7 @@ import sqlite3
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT))
 
 from scripts.storage_backup import distinct_paths, sha256  # noqa: E402
@@ -162,7 +163,7 @@ def validate_s3_snapshot(root):
 
 @contextmanager
 def pipeline_lock(root):
-    # Same OS lock as server.usdm, without importing API settings/credentials.
+    # Same OS lock as climate_platform USDM, without importing API settings/credentials.
     with (root / "pipeline.lock").open("a+b") as stream:
         stream.seek(0)
         if os.name == "nt":

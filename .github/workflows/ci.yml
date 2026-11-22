@@ -60,7 +60,7 @@ jobs:
           cache-dependency-path: climate-platform/requirements*.txt
       - name: Install
         working-directory: climate-platform
-        run: python -m pip install -r requirements-dev.txt -r requirements-portal.txt
+        run: python -m pip install -r requirements-dev.txt -r requirements-portal.txt -e .
       - name: Lint and tests
         working-directory: climate-platform
         run: |
@@ -68,6 +68,14 @@ jobs:
           python -m ruff format --check .
           python -m pytest -q --junitxml=server-tests.xml
           python -m pytest ../climate-collector/tests -q --junitxml=client-tests.xml
+      - name: Build and verify standalone wheel
+        working-directory: climate-platform
+        run: |
+          python -m pip install build
+          python -m build
+          python -m venv .test-runs/wheel-venv
+          .test-runs/wheel-venv/bin/pip install dist/*.whl
+          .test-runs/wheel-venv/bin/python -I scripts/package_smoke.py
       - name: Build release candidates
         working-directory: climate-platform
         run: |
@@ -78,7 +86,7 @@ jobs:
       - name: Install Trivy
         uses: aquasecurity/setup-trivy@e07451d2e059ed86c2870430ea286b3a9e0bf241
         with:
-          version: v0.68.2
+          version: v0.76.2
       - name: Scan all four images and generate SBOMs
         working-directory: climate-platform
         run: python scripts/verify_images.py --api-image "$CLIMATE_API_IMAGE" --worker-image "$CLIMATE_WORKER_IMAGE"

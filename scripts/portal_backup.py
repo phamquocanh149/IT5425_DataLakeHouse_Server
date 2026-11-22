@@ -11,10 +11,10 @@ import sys
 from contextlib import closing
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from server.portal.config import PortalConfig
-from server.portal.releases import snapshot, verify_release
+from climate_platform.api.portal.config import PortalConfig
+from climate_platform.api.portal.releases import snapshot, verify_release
 
 
 def copy_portal(source, destination):

@@ -172,7 +172,7 @@ def main():
     except httpx.ConnectError:
         print(f"\n[-] Could not connect to server at {args.url}.")
         print("    Make sure the server is running with:")
-        print("    uvicorn server.main:app --host 127.0.0.1 --port 8000")
+        print("    uvicorn climate_platform.api.app:app --host 127.0.0.1 --port 8000")
         sys.exit(1)
     except Exception as e:
         print(f"\n[-] Unexpected error during upload: {e}")

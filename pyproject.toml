@@ -1,0 +1,97 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "climate-platform"
+version = "0.1.0"
+description = "Climate Data Lake platform: ingestion server, USDM processing and data portal."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+dependencies = [
+    "fastapi==0.143.0",
+    "uvicorn==0.54.0",
+    "pydantic==2.14.0",
+    "pydantic-settings==2.15.0",
+    "python-multipart==0.0.32",
+    "httpx==0.28.1",
+    "python-dotenv==1.2.4",
+    "boto3==1.40.72",
+    "botocore==1.40.76",
+    "s3transfer==0.14.0",
+]
+
+[project.optional-dependencies]
+# Data Portal (OIDC/session) — same pins as requirements-portal.txt.
+portal = ["PyJWT==2.10.1", "cryptography==50.0.2"]
+# GIS science worker runs on a separate interpreter; kept separate from the API.
+gis = [
+    "geopandas==1.2.0",
+    "shapely==2.2.0",
+    "pandas==3.0.6",
+    "pyarrow==25.0.1",
+    "pyogrio==0.13.0",
+    "numpy==2.5.3",
+    "pyproj==3.8.0",
+]
+dev = ["pytest==8.4.2", "ruff==0.14.5"]
+
+[project.scripts]
+# API server (equivalent to: uvicorn climate_platform.api.app:app).
+climate-platform = "climate_platform.cli:serve"
+# GIS worker used by the USDM processor (installed, no source tree required).
+climate-usdm-worker = "climate_platform.cli:usdm_worker"
+# Offline USDM replay into Bronze/Silver/Gold.
+climate-usdm-replay = "climate_platform.cli:usdm_replay"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+climate_platform = [
+    "datasets/usdm/resources/*.py",
+    "datasets/usdm/resources/*.json",
+    "datasets/usdm/resources/historical_recipes/*.py",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v"
+filterwarnings = ["ignore::DeprecationWarning"]
+norecursedirs = [
+    ".git",
+    ".venv",
+    ".pytest_tmp",
+    "data_lake",
+    "warehouse",
+    "metadata",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+# Byte-pinned scientific resources are never reformatted or lint-fixed.
+extend-exclude = [
+    ".pytest_tmp",
+    "data",
+    "data_lake",
+    "metadata",
+    "warehouse",
+    "src/climate_platform/datasets/usdm/resources",
+    "src/climate_platform/datasets/usdm/science.py",
+]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/integration/test_loopback.py" = ["E402"]
+"tests/test_stage15.py" = ["F811"]
+"tests/test_readiness_security.py" = ["F811"]
+"tests/test_stage2_registry.py" = ["F811"]
+"tests/test_medallion_backup.py" = ["F811"]

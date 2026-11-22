@@ -8,10 +8,10 @@ from pathlib import Path
 import pytest
 from fastapi import UploadFile
 
-from server.config import Settings, settings
-from server.ingestion import process_file_upload
-from server.metadata import metadata_manager
-from server.maintenance import migrate_json, reconcile
+from climate_platform.catalog.maintenance import migrate_json, reconcile
+from climate_platform.catalog.repository import metadata_manager
+from climate_platform.config import Settings, settings
+from climate_platform.ingestion.service import process_file_upload
 from tests.test_server import setup_test_environment, client  # noqa: F401
 
 
@@ -131,7 +131,7 @@ def test_registry_failure_and_orphan_recovery(client, monkeypatch):
 
 
 def test_file_publish_failure_never_verifies(client, monkeypatch):
-    import server.metadata as registry
+    import climate_platform.catalog.repository as registry
 
     def fail(*args):
         raise OSError("simulated disk failure")

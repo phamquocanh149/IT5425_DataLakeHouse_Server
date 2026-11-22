@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from server.config import settings
-from server.metadata import file_hash
-from server import usdm
+from climate_platform.catalog.repository import file_hash
+from climate_platform.config import settings
+from climate_platform.datasets.usdm import processor as usdm
 
 
 @pytest.fixture
