@@ -16,7 +16,9 @@ class PortalConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="PORTAL_", extra="ignore")
     enabled: bool = False
     storage_root: Path = Field(default_factory=lambda: _checkout_path("data_lake", "portal"))
-    frontend_root: Path = Field(default_factory=lambda: _checkout_path("frontend", "dist"))
+    frontend_root: Path = Field(
+        default_factory=lambda: _checkout_path("..", "frontend-climate-platform", "dist")
+    )
     origin: str = "https://localhost:8010"
     oidc_issuer: str = ""
     oidc_client_id: str = "climate-portal"

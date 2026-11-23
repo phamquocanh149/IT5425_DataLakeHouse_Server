@@ -1,7 +1,0 @@
-# docker compose -f compose.yaml -f compose.internet.yaml up -d
-# Host Nginx terminates TLS; never publish the API/MinIO ports on all interfaces.
-services:
-  api:
-    environment:
-      ENABLE_STATIC_KEYS: "false"
-      API_KEYS: ${API_KEYS:?Configure expiring hashed keys before Internet deployment}

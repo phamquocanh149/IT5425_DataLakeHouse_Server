@@ -7,4 +7,6 @@
 !src/**/*.py
 !src/**/*.json
 !scripts/
-!scripts/*.py
+!scripts/**
+scripts/**/__pycache__
+scripts/**/*.pyc

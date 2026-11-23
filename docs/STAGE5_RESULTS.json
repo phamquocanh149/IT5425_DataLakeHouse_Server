@@ -16,8 +16,6 @@
     "seconds": 1.73
   },
   "ruff_check_and_format": "PASS",
-  "ci_yaml_parse_and_dependency_check": "PASS local; not a GitHub Actions run",
-  "client_commit_pin": "63a4773f501d5eb55be835d6852564bfd6fa0ebb",
   "synthetic_real_gis_drill": {
     "status": "PASS",
     "observations": 1,
@@ -41,7 +39,6 @@
   "not_executed": [
     "Clean Docker API/worker builds and image scans: Docker engine unavailable; Trivy not found",
     "Real MinIO full-volume restore drill: Docker engine unavailable",
-    "Remote GitHub Actions and branch protection configuration",
     "Off-host backup verification: destination not supplied",
     "Production service RPO/RTO acceptance"
   ],

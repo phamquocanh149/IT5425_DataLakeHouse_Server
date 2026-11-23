@@ -1,6 +1,8 @@
 services:
   api:
     build: .
+    image: ${CLIMATE_API_IMAGE:-climate-platform-api:latest}
+    pull_policy: ${API_PULL_POLICY:-build}
     restart: unless-stopped
     depends_on:
       minio-init:
@@ -48,7 +50,8 @@ services:
     cap_drop:
       - ALL
   minio:
-    image: quay.io/minio/minio@${MINIO_DIGEST:?Set verified official sha256 digest; see docs/security.md}
+    image: noname12346767/my-minio
+    pull_policy: ${MINIO_PULL_POLICY:-missing}
     command: ["server", "/data", "--console-address", ":9001"]
     restart: unless-stopped
     environment:
@@ -68,7 +71,8 @@ services:
     security_opt:
       - no-new-privileges:true
   minio-init:
-    image: quay.io/minio/mc@${MINIO_MC_DIGEST:?Set verified official sha256 digest; see docs/security.md}
+    image: noname12346767/mc-allos
+    pull_policy: ${MINIO_PULL_POLICY:-missing}
     depends_on:
       minio:
         condition: service_healthy
@@ -84,7 +88,7 @@ services:
       S3_BUCKET_GOLD: ${S3_BUCKET_GOLD:-climate-gold}
       S3_BUCKET_WAREHOUSE: ${S3_BUCKET_WAREHOUSE:-climate-warehouse}
     volumes:
-      - ./scripts/minio-init.sh:/init/minio-init.sh:ro
+      - ./scripts/ops/minio-init.sh:/init/minio-init.sh:ro
     tmpfs:
       - /tmp
     security_opt:

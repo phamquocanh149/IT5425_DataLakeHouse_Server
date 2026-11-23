@@ -1,6 +1,6 @@
 > P0.4/P0.5 remediation: see [readiness, credentials, TLS and deployment prerequisites](docs/security.md).
 > `/readyz` is readiness; `/livez` is liveness; `/health` remains a readiness alias.
-> Deployment now requires verified official `MINIO_DIGEST` and `MINIO_MC_DIGEST` values.
+> Official-image release verification requires verified `MINIO_DIGEST` and `MINIO_MC_DIGEST` values.
 
 ﻿# Data LakeHouse — Server
 
@@ -39,6 +39,22 @@ notepad .env
 ```
 
 Nếu đã có checkout/dữ liệu, giữ nguyên `.env` và tên Compose project. Không tạo project mới rồi hiểu nhầm volume mới trống là mất dữ liệu.
+
+### Một file Compose cho mọi cách chạy
+
+Chỉ dùng `compose.yaml`; chọn image và xác thực qua `.env` hoặc biến môi trường:
+
+| Cách chạy | Cấu hình | Lệnh |
+|---|---|---|
+| Image MinIO chính thức | `MINIO_DIGEST`, `MINIO_MC_DIGEST`; API build từ source | `docker compose up -d --build` |
+| MinIO build từ source local | `MINIO_IMAGE=climate-minio-source:7aac2a2`, `MINIO_MC_IMAGE=climate-mc-source:77f82e1`, `MINIO_PULL_POLICY=never` | `docker compose up -d --build` |
+| Image demo có sẵn | Đặt `CLIMATE_API_IMAGE`, `MINIO_IMAGE`, `MINIO_MC_IMAGE` theo image đã chọn; `API_PULL_POLICY=never`, `MINIO_PULL_POLICY=never` | `docker compose up -d --no-build` |
+| Internet qua Nginx/TLS | Chọn image như trên; thêm `ENABLE_STATIC_KEYS=false` và `API_KEYS` chứa key records hợp lệ | `docker compose up -d` |
+
+`MINIO_IMAGE`/`MINIO_MC_IMAGE` ưu tiên hơn digest mặc định. Image local/demo phải tồn tại
+trước khi chạy và không được coi là đã qua gate release image chính thức. Với project
+đang tồn tại, tiếp tục dùng đúng `-p <tên-project-cũ>`; giữ nguyên `bronze`, `registry`,
+`minio-data`. Không cần xóa hoặc tạo lại volumes khi chuyển sang file hợp nhất.
 
 ### Cấu trúc package và lệnh chạy (Phase 1)
 
@@ -119,7 +135,7 @@ Console phải có bốn bucket private, có versioning: `climate-bronze`, `clim
 
 ```powershell
 docker compose logs --tail 100 api minio minio-init
-docker compose exec -T api python scripts/reconcile_storage.py --checksum
+docker compose exec -T api python scripts/migration/reconcile_storage.py --checksum
 ```
 
 ## 4. Kết nối hai máy bằng VS Code Dev Tunnels
@@ -193,11 +209,11 @@ Nếu raw/metadata cũ đã nằm trong Docker volume và MinIO đã được kh
 
 ```powershell
 docker compose stop api
-docker compose run --rm --no-deps api python scripts/migrate_metadata.py
-docker compose run --rm --no-deps api python scripts/migrate_bronze_s3.py --dry-run
+docker compose run --rm --no-deps api python scripts/migration/migrate_metadata.py
+docker compose run --rm --no-deps api python scripts/migration/migrate_bronze_s3.py --dry-run
 # Chỉ apply sau khi inventory đúng và không có lỗi:
-docker compose run --rm --no-deps api python scripts/migrate_bronze_s3.py --apply
-docker compose run --rm --no-deps api python scripts/reconcile_storage.py --checksum
+docker compose run --rm --no-deps api python scripts/migration/migrate_bronze_s3.py --apply
+docker compose run --rm --no-deps api python scripts/migration/reconcile_storage.py --checksum
 docker compose up -d --wait
 ```
 
@@ -213,10 +229,10 @@ py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe -m ruff check .
 .\.venv\Scripts\python.exe -m ruff format --check .
 .\.venv\Scripts\python.exe -m pytest -q
-.\.venv\Scripts\python.exe scripts/compose_smoke.py
+.\.venv\Scripts\python.exe scripts/smoke/compose_smoke.py
 ```
 
-Smoke dùng project, bucket, registry và credentials riêng để kiểm tra Client thật → API → MinIO, revision/duplicate, outage/retry và persistence. Nó dừng container test nhưng giữ named volumes test để kiểm tra. Đây chưa phải kiểm thử hai máy vật lý. CI chạy lint/tests/build/smoke, không deploy hoặc dùng secrets production.
+Smoke dùng project, bucket, registry và credentials riêng để kiểm tra Client thật → API → MinIO, revision/duplicate, outage/retry và persistence. Nó dừng container test nhưng giữ named volumes test để kiểm tra. Đây chưa phải kiểm thử hai máy vật lý. Repo không dùng CI/CD; lint/tests/build/smoke chạy local, không deploy hoặc dùng secrets production.
 
 ## 9. Xử lý lỗi
 
@@ -237,10 +253,10 @@ Smoke dùng project, bucket, registry và credentials riêng để kiểm tra Cl
 
 Collector hiện còn là khung tích hợp; dữ liệu mẫu chỉ dùng thử truyền file, không phải bộ dữ liệu khoa học đã kiểm định.
 
-## Stage 5 — Checkpoint và CI release
+## Stage 5 — Checkpoint và phục hồi
 
 Đã thêm checkpoint toàn pipeline (Bronze, registry, products, warehouse và recipe),
-restore vào root độc lập, mandatory GIS CI, pin Client commit, worker image và scan/SBOM
+restore vào root độc lập, GIS test bắt buộc chạy local, worker image và scan/SBOM
 cho API/worker/MinIO/mc. Xem [runbook và gate nghiệm thu](docs/STAGE5_PRODUCTION_READINESS.md).
-Local tests/drill đã đạt; MinIO thật, Docker/remote CI, off-host và service RPO/RTO
-còn chờ nghiệm thu. Visualization/dashboard không thuộc thay đổi Stage 5.
+Local tests/drill đã đạt; MinIO thật, Docker, off-host và service RPO/RTO
+còn chờ nghiệm thu. Repo không dùng CI/CD. Visualization/dashboard không thuộc thay đổi Stage 5.

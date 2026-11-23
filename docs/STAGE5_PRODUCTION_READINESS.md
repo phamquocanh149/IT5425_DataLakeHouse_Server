@@ -1,12 +1,13 @@
-# Stage 5 — Complete checkpoints and release CI
+# Stage 5 — Complete checkpoints and local release validation
 
 Updated 2026-11-22 (Asia/Saigon). Scope: data recovery and release validation;
 visualization/dashboard changes are excluded. Status: implemented and verified locally;
-Docker/remote CI/off-host/service recovery acceptance remains pending.
+Docker/off-host/service recovery acceptance remains pending. This project does not use
+CI/CD; every check must run locally and record its command, date and artifacts.
 
 ## Checkpoint contract
 
-`scripts/medallion_backup.py` supplements the Stage 2 Bronze-only tool. Use the Stage 5
+`scripts/backup/medallion_backup.py` supplements the Stage 2 Bronze-only tool. Use the Stage 5
 tool for a deployment with USDM products. It never deletes source data or overwrites
 an existing checkpoint/restore root. A failed run leaves an incomplete directory;
 without a valid manifest/checksum it is not an accepted backup.
@@ -47,11 +48,11 @@ record the actual immutable image IDs/digests from the accepted release manifest
 The example placeholders below must be replaced, not passed literally.
 
 ```powershell
-.venv/Scripts/python.exe scripts/medallion_backup.py create `
+.venv/Scripts/python.exe scripts/backup/medallion_backup.py create `
   --root <runtime-root> --bundle <new-checkpoint> --writers-stopped `
   --image <api-image-id> --image <worker-image-id>
-.venv/Scripts/python.exe scripts/medallion_backup.py verify --bundle <new-checkpoint>
-.venv/Scripts/python.exe scripts/recovery_drill.py `
+.venv/Scripts/python.exe scripts/backup/medallion_backup.py verify --bundle <new-checkpoint>
+.venv/Scripts/python.exe scripts/backup/recovery_drill.py `
   --bundle <new-checkpoint> --target <new-restored-root> --report <new-report.json>
 ```
 
@@ -89,7 +90,7 @@ or TLS. Credentials are not written into the checkpoint.
    and delete markers; the command streams/hash-checks every object version:
 
    ```powershell
-   .venv/Scripts/python.exe scripts/medallion_backup.py capture-s3 `
+   .venv/Scripts/python.exe scripts/backup/medallion_backup.py capture-s3 `
      --writers-stopped --s3-inventory <new-versions.json>
    ```
 
@@ -100,7 +101,7 @@ or TLS. Credentials are not written into the checkpoint.
    UID/GID and modes. This is not a reason to run the API as root.
 
    ```powershell
-   .venv/Scripts/python.exe scripts/medallion_backup.py create `
+   .venv/Scripts/python.exe scripts/backup/medallion_backup.py create `
      --root <runtime-root> --bundle <new-checkpoint> --writers-stopped `
      --minio <stopped-minio-root> --s3-inventory <new-versions.json> `
      --image <api-image-id> --image <worker-image-id> --image <minio-digest>
@@ -110,7 +111,7 @@ or TLS. Credentials are not written into the checkpoint.
    or against its mounted copy. A second folder on this computer is **not** off-host.
    Retain an infrastructure/operator record identifying the separate storage location.
    Only resume the source deployment after the off-host copy has verified.
-4. Restore to a NEW independent root/volumes using `recovery_drill.py`. Optionally pass
+4. Restore to a NEW independent root/volumes using `scripts/backup/recovery_drill.py`. Optionally pass
    `--verified-copy <mounted-offhost-checkpoint>`; it checks that the copy is the same
    checkpoint and restores from that copy. No automatic overwrite or production switch.
 5. Start a separate MinIO instance using `<restored-root>/minio`, the same verified
@@ -118,7 +119,7 @@ or TLS. Credentials are not written into the checkpoint.
    that restored instance, then run:
 
    ```powershell
-   .venv/Scripts/python.exe scripts/medallion_backup.py reconcile `
+   .venv/Scripts/python.exe scripts/backup/medallion_backup.py reconcile `
      --root <restored-root> --live-s3
    ```
 
@@ -136,7 +137,7 @@ Never initialize a new bucket layout over an existing restored volume to hide fa
 
 ## Recovery metrics and recurring operation
 
-`recovery_drill.py` records checkpoint identity, UTC start/end, measured data restore
+`scripts/backup/recovery_drill.py` records checkpoint identity, UTC start/end, measured data restore
 duration, counts and verified-copy status. `--incident-at <timezone-aware-ISO-time>`
 enables actual checkpoint-age RPO calculation; without an incident it reports age,
 not an invented incident RPO. Future/earlier-than-checkpoint incident values must not
@@ -153,16 +154,15 @@ a restore drill monthly and after storage/schema/release changes. Scheduler cred
 off-host destination and maintenance windows have not been supplied, so no unattended
 production service/job has been installed by this change.
 
-## Release CI
+## Local release validation
 
-`.github/workflows/ci.yml` now has a mandatory `gis` job and a dependent `verify` job:
+There is no CI/CD pipeline. Run this validation locally before accepting a release:
 
-- Client checkout pinned to `63a4773f501d5eb55be835d6852564bfd6fa0ebb`, verified after
-  checkout. This is the locally observed Client HEAD; remote availability is verified
-  by CI. Update deliberately with Server/Client regression, never silently use HEAD.
+- Record the exact Client checkout used with Server regression; never silently use an
+  arbitrary HEAD. Update the reviewed commit deliberately with Server/Client regression.
 - Python 3.11 API tests and Python 3.14 GIS environment are separate. GIS dependencies
   are pinned in `requirements-gis.txt`. Missing GIS causes failure in required mode;
-  `check_gis_report.py` also rejects empty/failed/skipped GIS suites.
+  `scripts/release/check_gis_report.py` also rejects empty/failed/skipped GIS suites.
 - Vendored source cleaner is byte-pinned with `vendor/usdm/PROVENANCE.json` and a test.
   Original source repository remains read-only. When a source checkout supplies its
   own cleaner, the pipeline keeps existing behavior and records that exact hash.
@@ -172,20 +172,19 @@ production service/job has been installed by this change.
   API/worker/MinIO/mc with Trivy. HIGH/CRITICAL findings or missing images/tools fail.
   Each image gets a CycloneDX SBOM and immutable image ID in the scan manifest.
 - Compose smoke consumes the scanned API image with `--no-build`. A separate
-  `minio_recovery_smoke.py` seeds real GIS data into real MinIO, retains old versions
+  `scripts/smoke/minio_recovery_smoke.py` seeds real GIS data into real MinIO, retains old versions
   and a delete marker, snapshots stopped storage, restores to an independent tree,
   verifies every version, starts the API and checks HTTP DUPLICATE plus pipeline replay.
   It uses synthetic data, unique containers/network/volume, no host ports, and test-only
   admin credentials. It does not certify production least-privilege policy or off-host DR.
 - Only after all gates pass, preserve the exact API/worker image archive and checksum,
   Server/Client commits and scan manifest. Deploy those artifacts; do not rebuild a
-  different image and assume the prior tests/scan cover it. CI artifact retention is
-  seven days, not the long-term disaster recovery archive.
+  different image and assume the prior tests/scan cover it. Local artifact retention is
+  an operator decision, not a substitute for the long-term disaster recovery archive.
 
-Set `MINIO_DIGEST`/`MINIO_MC_DIGEST` repository variables to verified official artifacts.
-Make the `verify` job required in branch protection; the repository workflow cannot
-enforce server-side branch protection settings by itself. Publishing/deployment is not
-automated or authorized by this change.
+Set `MINIO_DIGEST`/`MINIO_MC_DIGEST` in the local environment to verified official
+artifacts before Compose smoke. No hosted workflow or branch-protection setting is used;
+do not add CI/CD. Publishing/deployment is not automated or authorized by this change.
 
 Local commands when dependencies are already available:
 
@@ -193,14 +192,14 @@ Local commands when dependencies are already available:
 $env:REQUIRE_GIS_TESTS='1'
 $env:USDM_GIS_PYTHON='E:/anaconda/python.exe'
 .venv/Scripts/python.exe -m pytest -q
-.venv/Scripts/python.exe scripts/gis_smoke.py --gis-python $env:USDM_GIS_PYTHON
+.venv/Scripts/python.exe scripts/smoke/gis_smoke.py --gis-python $env:USDM_GIS_PYTHON
 .venv/Scripts/python.exe -m ruff check --no-cache .
 .venv/Scripts/python.exe -m ruff format --check --no-cache .
 # Docker Linux and exact images must be available for these commands:
-.venv/Scripts/python.exe scripts/verify_images.py --api-image <api-image> --worker-image <worker-image>
+.venv/Scripts/python.exe scripts/release/verify_images.py --api-image <api-image> --worker-image <worker-image>
 $env:CLIMATE_API_IMAGE='<api-image>'
 $env:CLIMATE_WORKER_IMAGE='<worker-image>'
-.venv/Scripts/python.exe scripts/minio_recovery_smoke.py
+.venv/Scripts/python.exe scripts/smoke/minio_recovery_smoke.py
 ```
 
 ## Evidence and remaining gates (2026-11-22)
@@ -209,8 +208,7 @@ Machine-readable evidence: [STAGE5_RESULTS.json](STAGE5_RESULTS.json).
 
 - Full Server suite: **130 passed**, including 5 real GIS tests and 19 new Stage 5 tests;
   one existing Starlette/httpx deprecation warning. No GIS skips in this run.
-- Client regression: **59 passed**. CI YAML parsed, GIS job dependency and Client pin
-  checked; Ruff check/format PASS. This is not a remote GitHub Actions result.
+- Client regression: **59 passed**; Ruff check/format PASS. No CI/CD was used.
 - Real GIS synthetic pipeline/checkpoint/restore/rerun: PASS, 1 observation/build,
   2 Gold rows, no duplicate build after restore.
 - Real USDM source week 2020-01-07, isolated new runtime: PASS, 1 observation/build,
@@ -228,8 +226,8 @@ Machine-readable evidence: [STAGE5_RESULTS.json](STAGE5_RESULTS.json).
 - After recipe recovery and preserving archived recipes across restore -> backup,
   all **19 Stage 5 tests passed again (5.48s)**; the full 130-test run above preceded
   this narrowly tested follow-up.
-- Docker engine unavailable locally; new Docker builds, scans, real MinIO drill and
-  GitHub Actions have **not** been executed/accepted in this session.
+- Docker engine unavailable locally; new Docker builds, scans and real MinIO drill have
+  **not** been executed/accepted in this session. No CI/CD exists to run them.
 - Off-host destination and actual incident/service RPO/RTO acceptance pending.
 - Exact pilot recipe recovered and authenticated by its original SHA-256; see above.
 

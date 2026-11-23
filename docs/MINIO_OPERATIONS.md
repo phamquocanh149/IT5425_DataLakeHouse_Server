@@ -49,10 +49,10 @@ Native commands default to this checkout's metadata directory; container command
 visible inside named Docker volumes.
 
 ```powershell
-python scripts/migrate_metadata.py
-python scripts/migrate_bronze_s3.py --dry-run
-python scripts/migrate_bronze_s3.py --apply
-python scripts/reconcile_storage.py --checksum
+python scripts/migration/migrate_metadata.py
+python scripts/migration/migrate_bronze_s3.py --dry-run
+python scripts/migration/migrate_bronze_s3.py --apply
+python scripts/migration/reconcile_storage.py --checksum
 ```
 
 The first command imports legacy JSON using the existing Stage 0 migration with backups.
@@ -65,7 +65,7 @@ are reported, never automatically removed. --repair-status changes only metadata
 
 To consolidate native legacy JSON/raw into the Docker registry, mount the checkout's
 data_lake and metadata read-only at /legacy/data_lake and /legacy/metadata in a one-shot
-API container and run `python scripts/import_legacy_checkout.py --source /legacy`.
+API container and run `python scripts/migration/import_legacy_checkout.py --source /legacy`.
 Review the inventory, then repeat with `--apply`. The importer backs up the existing
 SQLite registry and copies only checksum-verified files without overwriting conflicts.
 Run the S3 migration in that same registry volume afterwards.
@@ -110,8 +110,8 @@ This procedure uses a complete STOPPED MinIO volume snapshot, not a current-obje
 ### 1. Select the deployment, stop writers and identify mounts/images
 
 PowerShell from Server root, Linux Docker engine. Replace the project placeholder and use
-EXACTLY the compose files used by the source deployment (including compose.source.yaml if
-applicable). Do not switch deployment type. The helper uses the existing API's immutable
+`compose.yaml` with EXACTLY the project name, image variables and credentials of the source
+deployment. Do not switch deployment type. The helper uses the existing API's immutable
 image ID and bind-mounts the backup script; no package installation is needed.
 
 ```powershell
@@ -152,7 +152,7 @@ and logs before declaring the checkpoint safe.
 ```powershell
 $backupRoot = Join-Path (Get-Location) ('backup-' + (Get-Date -Format yyyyMMdd-HHmmss))
 New-Item -ItemType Directory -Path $backupRoot -ErrorAction Stop | Out-Null
-$backupScript = (Resolve-Path scripts/storage_backup.py).Path
+$backupScript = (Resolve-Path scripts/backup/storage_backup.py).Path
 D run --rm --network none --user 0:0 --entrypoint python `
   --mount "type=volume,source=$registryVolume,target=/registry,readonly" `
   --mount "type=volume,source=$minioVolume,target=/minio,readonly" `
@@ -164,7 +164,7 @@ D run --rm --network none --user 0:0 --entrypoint python `
   --project $sourceProject --image "api=$apiImage" --image "minio=$minioImage" --image "mc=$mcImage"
 ```
 
-`scripts/storage_backup.py` calls SQLite `Connection.backup()` for BOTH `ingestion.sqlite3`
+`scripts/backup/storage_backup.py` calls SQLite `Connection.backup()` for BOTH `ingestion.sqlite3`
 and `access.sqlite3`, checks integrity and closes connections before archiving. It retains
 legacy metadata/backups but replaces the live database/WAL/SHM with consistent snapshots.
 The bundle contains `registry.tar.gz`, `minio-data.tar.gz`, `legacy.tar.gz`, `manifest.json`
@@ -175,7 +175,7 @@ some files were written successfully. Never edit the manifest to bypass a failed
 The helper rejects archive links, path traversal and special files.
 
 Store a protected copy OUTSIDE the host/volumes being backed up. Verify the copied bundle:
-`python scripts/storage_backup.py verify --bundle <off-host-copy>`.
+`python scripts/backup/storage_backup.py verify --bundle <off-host-copy>`.
 Checksums detect corruption, not malicious replacement: protect both manifest and checksum.
 Store private configuration/API_KEYS/S3 credentials and KMS material, if applicable, separately
 with controlled access. Preserve the exact release source/Compose and image artifacts/provenance;
@@ -250,7 +250,7 @@ for inspection and retry in a NEW project; do not overlay partial state or delet
 
 1. Record recovery start UTC. Start restored MinIO, then run init using original bucket names
    and credentials. Keep the restored API stopped. Do not change retention/policy incidentally.
-2. Run `D compose @restoreCompose run --rm --no-deps api python scripts/reconcile_storage.py --checksum`.
+2. Run `D compose @restoreCompose run --rm --no-deps api python scripts/migration/reconcile_storage.py --checksum`.
    The registry is restored already; do not create a fresh database. Do not use `--repair-status`
    to hide restore failures. No missing/corrupt/unmigrated rows are acceptable. Explain any
    orphan against the pre-backup inventory; never auto-delete it.
@@ -289,13 +289,13 @@ object may not yet have a registry row even if the row snapshot itself has not c
 
 ```powershell
 python -m pytest -q
-python scripts/compose_smoke.py
+python scripts/smoke/compose_smoke.py
 ```
 
 Smoke creates unique test buckets, project, registry and random credentials, tests real
 HTTPX/MinIO, then stops/removes only its containers/network. It deliberately retains its
 isolated named volumes for inspection (no data deletion). The printed project prefix
-identifies them. Do not run scripts/s3_assertions.py against production.
+identifies them. Do not run scripts/smoke/s3_assertions.py against production.
 
 ## Stage 5: deployments with Medallion products
 

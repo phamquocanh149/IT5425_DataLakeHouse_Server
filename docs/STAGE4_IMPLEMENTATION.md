@@ -27,9 +27,9 @@ Khởi động lại từ root Server:
 
 ```powershell
 .venv/Scripts/python.exe -m pip install -r requirements-portal.txt
-npm.cmd --prefix frontend ci
-npm.cmd --prefix frontend run build
-.venv/Scripts/python.exe scripts/run_portal_demo.py
+npm.cmd --prefix ../frontend-climate-platform ci
+npm.cmd --prefix ../frontend-climate-platform run build
+.venv/Scripts/python.exe scripts/portal/run_portal_demo.py
 ```
 
 Demo chỉ bind 127.0.0.1, từ chối host/client ngoài loopback và không tin forwarded
@@ -66,8 +66,8 @@ Tạo release mới, pause ingestion/release writers trước khi chạy; CLI kh
 
 ```powershell
 $env:DEBUG='False'
-.venv/Scripts/python.exe scripts/prepare_portal.py --source-root .test-runs/usdm-stage3 --portal-root data_lake/portal --gis-python E:/anaconda/python.exe --release-id usdm-next
-.venv/Scripts/python.exe scripts/prepare_portal.py --portal-root data_lake/portal --release-id usdm-next --verify
+.venv/Scripts/python.exe scripts/portal/prepare_portal.py --source-root .test-runs/usdm-stage3 --portal-root data_lake/portal --gis-python E:/anaconda/python.exe --release-id usdm-next
+.venv/Scripts/python.exe scripts/portal/prepare_portal.py --portal-root data_lake/portal --release-id usdm-next --verify
 ```
 
 Publisher copy và hash artifacts, SQLite backup API, đối soát mọi Gold build CSV
@@ -84,7 +84,7 @@ atomic. Không ghi đè release ID. GIS không chạy trong API process.
 - `releases.py`, `prepare_gis.py`: serving release immutable và offline cache.
 - `reader.py`, `read_worker.py`: subprocess riêng cho JSON/SQLite reads; timeout
   5 giây **mỗi worker**, memory cap 256 MiB qua Windows Job Object/Linux RLIMIT_AS.
-- `frontend/`: React/TypeScript/Vite và MapLibre; không gọi tile service bên ngoài.
+- `../frontend-climate-platform/`: React/TypeScript/Vite và MapLibre; không gọi tile service bên ngoài.
 
 Preview tối đa 200 rows/trang, 1 MiB response; Gold đọc tối đa 5.000 rows/tuần.
 Map tối đa 5.000 features/100.000 vertices/5 MiB. Silver chọn feature intersect
@@ -100,8 +100,8 @@ Pause publish và thay đổi grants trong lúc snapshot. Đích phải mới, k
 nguồn; không overwrite, không xóa dữ liệu. Copy release không dùng hardlink.
 
 ```powershell
-.venv/Scripts/python.exe scripts/portal_backup.py --source data_lake/portal --destination data_lake/portal-backup-new
-.venv/Scripts/python.exe scripts/portal_backup.py --source data_lake/portal-backup-new --destination data_lake/portal-restored-new
+.venv/Scripts/python.exe scripts/backup/portal_backup.py --source data_lake/portal --destination data_lake/portal-backup-new
+.venv/Scripts/python.exe scripts/backup/portal_backup.py --source data_lake/portal-backup-new --destination data_lake/portal-restored-new
 ```
 
 Đã chạy copy/restore thật sang `data_lake/portal-restore-20261122`, verify toàn bộ
@@ -119,15 +119,15 @@ $env:USDM_SOURCE_ROOT='D:/Trực quan hóa/data_crawl_USDM'
 .venv/Scripts/python.exe -m pytest -q
 .venv/Scripts/python.exe -m ruff check --no-cache .
 .venv/Scripts/python.exe -m ruff format --check --no-cache .
-npm.cmd --prefix frontend run build
+npm.cmd --prefix ../frontend-climate-platform run build
 # Khi demo đã chạy trên 8010, Chrome đã cài:
-npm.cmd --prefix frontend run test:e2e
+npm.cmd --prefix ../frontend-climate-platform run test:e2e
 ```
 
 Browser tests dùng Chrome thật, dữ liệu Stage 3 thật và OIDC localhost: overview
 counts; preview ba layer; tải ZIP/Parquet/CSV và hash; geometry thật đã render;
 Operator/Admin/limited Viewer; mobile không overflow; loading/empty/503/retry/expiry.
-Ảnh và trace khi lỗi ở `frontend/test-results` (không commit).
+Ảnh và trace khi lỗi ở `../frontend-climate-platform/test-results` (không commit).
 API tests gồm signed JWT sai signature/nonce/issuer/audience/expiry; revoke,
 CSRF, cursor, history, release switch, không fallback, corrupt artifact, audit rollback,
 rate/concurrency, worker budget, restore. Tests không chứng minh triển khai production.
@@ -136,7 +136,7 @@ Kết quả 2026-11-22: **111 Server tests passed** (gồm 30 Portal và GIS th�
 **59 Client tests passed**, **4 browser E2E passed**; Ruff check/format và frontend
 TypeScript/build PASS. Một warning Starlette/httpx deprecation từ test dependency.
 
-Đo `scripts/benchmark_portal.py`: 10 users tạm độc lập, mỗi route 10 requests đồng thời,
+Đo `scripts/portal/benchmark_portal.py`: 10 users tạm độc lập, mỗi route 10 requests đồng thời,
 Windows 10.0.26200, Intel64 Family 6 Model 170. Nearest-rank p95: catalog **351,1ms**,
 Gold preview **671,6ms**, Gold map **2.490,8ms**, không lỗi. Đây là sample warm local
 ngắn, chưa phải sustained load/capacity hoặc SLA production; script tự xóa users/grants
@@ -144,7 +144,7 @@ tạm sau khi chạy và không đổi dữ liệu USDM.
 
 Phần cần nghiệm thu tiếp: IdP tổ chức/TLS/reverse proxy/container packaging, sustained
 load/SLO trên hạ tầng đích, hủy download giữa chừng qua proxy, bảo mật deployment, user UAT.
-Không chạy real MinIO hoặc remote CI trong Stage 4. Gate MinIO Stage 2 giữ nguyên.
+Không chạy real MinIO trong Stage 4; repo không dùng CI/CD. Gate MinIO Stage 2 giữ nguyên.
 Bundle bản đồ còn lớn (~343 KiB gzip toàn JS); cần đo cold-load trên mạng triển khai.
 
 ## Cấu hình triển khai thực tế

@@ -15,7 +15,7 @@ timeout guarantees; deploy with reliable local DNS and an external probe timeout
 
 ## Credentials and rotation
 
-Run `python scripts/create_api_key.py collector-2026-11` in a private terminal.
+Run `python scripts/ops/create_api_key.py collector-2026-11` in a private terminal.
 It prints a `key_id.secret` client credential and a SHA-256 server record. Use
 32-byte random secrets; hashes are not password storage for human-chosen secrets.
 Put records in the JSON `API_KEYS` setting. Records require `key_id`, `secret_hash`,
@@ -30,8 +30,9 @@ ownership, deduplication and revision history remain unchanged. Disable old keys
 before expiry if compromised. Configuration is loaded at process start, not hot-reloaded.
 
 `ENABLE_STATIC_KEYS=True` preserves existing installations during migration.
-Set it to False after migration. The `compose.internet.yaml` override enforces
-hashed expiring records and refuses static credentials. `ENABLE_LEGACY_KEYS` only
+Set it to False after migration. For Internet deployment with `compose.yaml`, set
+`ENABLE_STATIC_KEYS=false` and supply expiring hashed records in `API_KEYS`.
+API startup rejects an empty key list when static keys are disabled. `ENABLE_LEGACY_KEYS` only
 controls the older client01/client02 identities, independently of static-key mode.
 Secret verification uses `hmac.compare_digest` on fixed-length hashes.
 
@@ -56,7 +57,7 @@ Collector config enforces HTTPS except literal loopback IPs and localhost, even
 when Config is constructed directly. TLS certificate validation stays enabled;
 redirects are not followed. Configure a real hostname and certificate in
 `deploy/nginx.conf`, install it on the host, validate with `nginx -t`, and start
-with `docker compose -f compose.yaml -f compose.internet.yaml up -d`.
+with `docker compose up -d` after setting the authentication variables above.
 Only Nginx exposes public 443; API and MinIO remain loopback-bound. The example
 also limits unauthenticated traffic by source IP and caps upload body size.
 Test from a remote client using `https://your-host/readyz`, then an authenticated
@@ -68,11 +69,11 @@ Compose no longer accepts the personal Docker Hub image overrides. It requires
 `MINIO_DIGEST=sha256:...` and `MINIO_MC_DIGEST=sha256:...` and constructs only
 `quay.io/minio/minio@...` and `quay.io/minio/mc@...`. Obtain digests from a trusted
 publisher manifest/release, review provenance, then run
-`python scripts/verify_images.py --api-image <tested-api-image> --worker-image <tested-worker-image>` with Docker and Trivy installed. It pulls from
+`python scripts/release/verify_images.py --api-image <tested-api-image> --worker-image <tested-worker-image>` with Docker and Trivy installed. It pulls from
 the official namespace, writes CycloneDX SBOMs and JSON vulnerability reports,
 and fails on HIGH/CRITICAL findings. Retain `security-artifacts/` with release
-evidence. CI uses the same gate; configure repository variables MINIO_DIGEST and
-MINIO_MC_DIGEST before its Compose smoke job can pass. Registry origin plus digest is not a publisher cryptographic signature;
+evidence. Run the same gate locally with MINIO_DIGEST and MINIO_MC_DIGEST set before
+the Compose smoke; this project has no CI/CD pipeline. Registry origin plus digest is not a publisher cryptographic signature;
 do not claim signed provenance without a verified publisher attestation.
 
 As of this remediation, anonymous Quay manifest/token requests returned 401 and
@@ -114,5 +115,5 @@ deadline. Readiness still probes write availability and can briefly report 503
 during genuine contention; its cache/timeout behavior is unchanged.
 
 Stage 5 also scans the exact locally built API/worker image IDs and emits their SBOMs.
-See [release CI and checkpoint gates](STAGE5_PRODUCTION_READINESS.md). A successful
+See [checkpoint and local release validation gates](STAGE5_PRODUCTION_READINESS.md). A successful
 scan manifest is removed before a new run, so a failed scan cannot leave a stale PASS.

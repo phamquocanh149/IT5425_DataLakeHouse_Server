@@ -24,7 +24,7 @@ $env:DEBUG='False'
 
 ```powershell
 cd climate-collector
-.\.venv\Scripts\python.exe scripts/cross_repo_smoke.py
+.\.venv\Scripts\python.exe scripts/smoke/cross_repo_smoke.py
 .\.venv\Scripts\python.exe scripts/generate_sample.py --source usdm
 .\.venv\Scripts\python.exe scripts/send_file.py --file data/pending/sample_usdm.csv --source usdm --date 2021-06-22 --dataset-key demo/usdm
 ```
@@ -39,7 +39,7 @@ N?u demo ?? ch?y tr??c ??, DUPLICATE l? h?p l?; d?ng ng?y demo m?i n?u c?n obser
 cd climate-platform
 Get-ChildItem data_lake/bronze -Recurse -File
 .\.venv\Scripts\python.exe -c "import sqlite3; c=sqlite3.connect('metadata/ingestion.sqlite3'); print(c.execute('SELECT file_id,client_id,source,source_date,dataset_key,revision,status FROM observations').fetchall()); c.close()"
-.\.venv\Scripts\python.exe scripts/reconcile_storage.py --checksum
+.\.venv\Scripts\python.exe scripts/migration/reconcile_storage.py --checksum
 ```
 
 B?n ghi collector01/usdm; checksum trong SQLite kh?p raw. Kh?ng s?a/x?a d? li?u ?? l?m demo.

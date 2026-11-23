@@ -37,7 +37,7 @@ USDM Stage 3. Người dùng chọn IdP demo localhost. Xem
 [Checklist](../docs/STAGE4_ACCEPTANCE.md). **Chưa đánh dấu Completed; chờ UAT.**
 
 Implementation: `portal/` mở rộng FastAPI qua `install_portal`, opt-in
-`PORTAL_ENABLED` trong main; React/TypeScript ở `frontend/`; OIDC session,
+`PORTAL_ENABLED` trong main; React/TypeScript ở `../frontend-climate-platform/`; OIDC session,
 Viewer/Operator/Admin và grants dataset/layer/action kiểm tra mỗi request.
 `data_lake/portal/releases/usdm-stage3-v1` riêng ngoài `.test-runs`, current/history
 pin xuyên preview/download. 130 current tuần, 131 historical builds, 423.670 Gold rows.
@@ -47,8 +47,9 @@ Giữ ingestion/auth collector/ownership và schema Stage 1–3. Chỉ xem/tải
 không upload UI, pipeline/collector control, SQL tự do hay Silver/Gold MinIO.
 API/security, browser E2E và hồi quy đã chạy local; restore thật sang root độc lập
 đã verify. Không đồng nghĩa production IdP/TLS, load SLO hoặc MinIO đã nghiệm thu.
-Scripts: `prepare_portal.py`, `run_portal_demo.py`, `portal_backup.py`;
-tests: `tests/test_portal.py`, `frontend/tests/portal.spec.ts`.
+Scripts: `scripts/portal/prepare_portal.py`, `scripts/portal/run_portal_demo.py`,
+`scripts/backup/portal_backup.py`;
+tests: `tests/portal/test_portal.py`, `../frontend-climate-platform/tests/portal.spec.ts`.
 
 ## Phạm vi Stage 3 được giao ngày 2026-11-21
 
@@ -68,9 +69,9 @@ ownership, revision semantics hoặc dependency runtime của FastAPI.
 - Gold dùng tọa độ grid/lon/lat từ CSV tham chiếu, không dùng nhãn drought làm
   đầu vào. Point-in-polygon `within`, lấy max DM khi chồng lấn; ngoài đa giác
   là `0`, phân biệt với `D0`. Đây là mart centroid, không phải diện tích hạn hán.
-- `scripts/run_usdm.py`: CLI offline có quyền của operator, không phải API collector.
+- `scripts/usdm/run_usdm.py`: CLI offline có quyền của operator, không phải API collector.
   Owner cố định `usdm-replay`, dataset key `usdm/gis/CONUS/M/weekly`.
-- `scripts/verify_usdm.py`: kiểm tra source/output hashes và đối chiếu Gold,
+- `scripts/usdm/verify_usdm.py`: kiểm tra source/output hashes và đối chiếu Gold,
   chỉ chọn build mới nhất của observation VERIFIED/current theo registry.
 
 ## Lưu trữ và retry
@@ -104,15 +105,16 @@ và giới hạn. Test orchestration dùng fake worker phải báo riêng với 
 GIS tests opt-in qua `USDM_GIS_PYTHON` và `USDM_SOURCE_ROOT`; không cài GIS vào API
 chỉ để collection test. Dữ liệu nguồn chỉ đọc; mọi output/test phải ở workspace Server.
 
-## Stage 5 — Checkpoint và CI release (2026-11-22)
+## Stage 5 — Checkpoint và phục hồi (2026-11-22)
 
 `usdm.py` lưu cleaner/worker đúng bytes vào `products/recipes/<sha256>.py` trước
 build; source cleaner vẫn ưu tiên khi có, fallback bản byte-pinned trong `vendor/usdm`.
 Không đổi build identity, raw hoặc output khoa học. GIS worker image tách API image.
-Checkpoint/restore nằm ở `scripts/medallion_backup.py`, đo recovery ở `recovery_drill.py`.
+Checkpoint/restore nằm ở `scripts/backup/medallion_backup.py`, đo recovery ở
+`scripts/backup/recovery_drill.py`.
 Thiếu historical recipe phải báo lỗi, không sửa hash/build cũ để vượt gate.
-CI bắt buộc real GIS, pin Client, scan bốn image và test đúng release artifacts.
+Gate local bắt buộc real GIS, scan bốn image và test đúng release artifacts; repo không dùng CI/CD.
 Full-volume MinIO drill là test cô lập; chưa chạy local vì thiếu Docker engine.
 Xem [Stage 5](../docs/STAGE5_PRODUCTION_READINESS.md); trạng thái PARTIAL cho
-production/off-host/remote CI, dù full 130 tests local PASS. Recipe pilot cũ đã
+production/off-host, dù full 130 tests local PASS. Recipe pilot cũ đã
 khôi phục đúng SHA-256 và được lưu trong vendor/usdm/recipes; không dùng làm worker hiện tại.

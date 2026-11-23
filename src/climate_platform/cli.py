@@ -62,13 +62,13 @@ def usdm_worker():
 
 def verify_usdm(argv=None):
     """``climate-verify-usdm``: cross-check source/output hashes and Gold reference."""
-    from scripts.verify_usdm import main
+    from scripts.usdm.verify_usdm import main
 
     return main(argv)
 
 
 def prepare_portal(argv=None):
     """``climate-prepare-portal``: publish a verified local Portal release."""
-    from scripts.prepare_portal import main
+    from scripts.portal.prepare_portal import main
 
     return main(argv)

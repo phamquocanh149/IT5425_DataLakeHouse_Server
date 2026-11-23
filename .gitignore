@@ -57,9 +57,3 @@ release-artifacts/
 build/
 dist/
 *.egg-info/
-
-# Portal frontend build and browser QA artifacts
-frontend/node_modules/
-frontend/dist/
-frontend/test-results/
-frontend/playwright-report/

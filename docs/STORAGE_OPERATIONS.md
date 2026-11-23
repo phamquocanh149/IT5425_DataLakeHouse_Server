@@ -25,8 +25,8 @@ restoration of a registry whose S3 objects were never backed up.
 - Restore legacy into NEW directories with explicit STORAGE_BACKEND=local. Check both
   databases' integrity, every raw hash and reconciliation before resuming writers.
   Do not start current S3 Compose with only a local archive and call it a complete restore.
-- To migrate to S3, preserve originals, dry-run scripts/import_legacy_checkout.py before
-  --apply, then use scripts/migrate_bronze_s3.py and reconciliation as described in the
+- To migrate to S3, preserve originals, dry-run scripts/migration/import_legacy_checkout.py before
+  --apply, then use scripts/migration/migrate_bronze_s3.py and reconciliation as described in the
   MinIO runbook. Do not silently rewrite ownership/file_id/dataset_key/path conflicts.
 
 These are legacy compatibility notes, not a second S3 runbook. Client pending snapshots
