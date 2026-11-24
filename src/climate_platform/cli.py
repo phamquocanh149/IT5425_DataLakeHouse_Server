@@ -16,7 +16,7 @@ def serve():
     from climate_platform.config import settings
 
     uvicorn.run(
-        "climate_platform.api.app:app",
+        "climate_platform.app:app",
         host=settings.SERVER_HOST,
         port=settings.SERVER_PORT,
     )

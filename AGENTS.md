@@ -79,9 +79,14 @@ File này chỉ giữ **rules/convention** để làm việc trong repo. Plan, r
 
 - Chi tiết ánh xạ module: `docs/AGENT_MODULES.md`.
 - Giữ route/lifecycle ở `app.py`, validation/stream ở `modules/ingestion/`, registry ở
-  `modules/catalog/`, object storage ở `modules/storage/`, auth ở `modules/auth/` và phân quyền ở
-  `modules/authorization/`, recovery ở `modules/catalog/*maintenance.py`, processor/publish ở
-  `modules/processing/`, Portal API ở `modules/portal/`.
+  `modules/catalog/`, auth ở `modules/auth/` và phân quyền ở `modules/authorization/`, recovery ở
+  `modules/catalog/*maintenance.py`, processor/publish ở `modules/processing/`, Portal API ở
+  `modules/portal/`.
+- **Tầng dữ liệu ở cấp package** (SQLAlchemy): entity ORM ở `entity/`, repository SQL ở
+  `repositories/` (`catalog_repository.py`, `auth_repository.py`, `authorization_repository.py`,
+  `control_repository.py`, `access_repository.py`, `warehouse_repository.py`, `releases.py`,
+  `database.py`), object storage (MinIO/S3 + local Bronze) ở `s3/`. Các `modules/*/repositories/`
+  và `modules/storage/` cũ đã được gỡ bỏ.
 - **Chưa thêm** Kafka/Airflow/DuckDB hoặc broker chỉ để khớp tên dự án.
 
 ## Frontend — đã migrate, ngoài phạm vi repo này

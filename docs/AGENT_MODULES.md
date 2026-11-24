@@ -43,15 +43,15 @@ Chuyển từ chia theo layer sang **feature modules**: mỗi bounded context l�
 | `api/access.py` (middleware + accounting) | `common/middleware.py` |
 | `api/security.py` | `modules/auth/guards.py` + `modules/authorization/` |
 | `infrastructure/readiness.py` | `modules/system/readiness.py` |
-| `infrastructure/object_store.py` | `modules/storage/repositories/minio_repository.py` + `modules/storage/keys.py` |
+| `infrastructure/object_store.py` | `s3/minio_repository.py` + `s3/keys.py` (cấp package) |
 | `ingestion/*` | `modules/ingestion/*` |
-| `catalog/repository.py` (SQL) | `modules/catalog/repositories/sqlite_repository.py` |
+| `catalog/repository.py` (SQL) | `repositories/catalog_repository.py` (SQLAlchemy) + entity `entity/registry.py` |
 | `catalog/repository.py` (`FileMetadata`, `file_hash`) | `modules/catalog/model.py` |
 | `catalog/repository.py::_register_s3` | `modules/catalog/service.py` |
 | `catalog/{maintenance,s3_maintenance}.py` | `modules/catalog/*` |
 | `processing/*` | `modules/processing/*` |
 | `api/portal/auth.py` | `modules/auth/controllers/{login,session}.py` |
-| `api/portal/{store,releases}.py` | `modules/portal/repositories/{store,releases}.py` |
+| `api/portal/{store,releases}.py` | `repositories/control_repository.py` + `repositories/releases.py` (cấp package) |
 | `api/portal/api.py` (926 dòng) | `modules/portal/controllers/{catalog,selection,admin}.py` + `services/*` |
 | `api/portal/{reader,read_worker,prepare_gis,demo}.py` | `modules/portal/workers/*` |
 | `api/portal/{app,config}.py` | `modules/portal/{module,config}.py` |

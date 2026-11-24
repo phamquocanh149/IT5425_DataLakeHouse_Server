@@ -54,9 +54,9 @@ def test_independent_restore_invalidates_sessions(portal):
         assert copy_portal(portal["root"], destination) == "fixture-v1"
         restored = Store(destination)
         with restored.db() as db:
-            assert db.execute("SELECT count(*) FROM users").fetchone()[0] == 1
-            assert db.execute("SELECT count(*) FROM grants").fetchone()[0] == 3
-            assert db.execute("SELECT count(*) FROM sessions").fetchone()[0] == 0
+            assert db.execute("SELECT count(*) AS n FROM users").fetchone()["n"] == 1
+            assert db.execute("SELECT count(*) AS n FROM grants").fetchone()["n"] == 3
+            assert db.execute("SELECT count(*) AS n FROM sessions").fetchone()["n"] == 0
         verify_release(destination, "fixture-v1")
         with pytest.raises(ValueError):
             copy_portal(portal["root"], destination)

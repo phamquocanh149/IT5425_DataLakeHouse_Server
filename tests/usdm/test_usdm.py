@@ -83,7 +83,7 @@ def test_revision_preserves_history_and_old_replay(pipeline):
         rows = db.execute(
             "SELECT revision,is_current FROM observations ORDER BY revision"
         ).fetchall()
-    assert [tuple(r) for r in rows] == [(1, 0), (2, 1)]
+    assert [(r["revision"], r["is_current"]) for r in rows] == [(1, 0), (2, 1)]
 
 
 def test_quality_failure_then_retry(pipeline, monkeypatch):
@@ -187,4 +187,4 @@ def test_size_limit(pipeline, monkeypatch):
     monkeypatch.setattr(settings, "MAX_FILE_SIZE_BYTES", 1)
     assert run(pipeline)["failed"] == 1
     with usdm.MetadataManager().connection() as db:
-        assert db.execute("SELECT count(*) FROM observations").fetchone()[0] == 0
+        assert db.execute("SELECT count(*) AS n FROM observations").fetchone()["n"] == 0

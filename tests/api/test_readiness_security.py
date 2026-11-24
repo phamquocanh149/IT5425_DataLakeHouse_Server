@@ -10,7 +10,7 @@ from botocore.exceptions import ClientError
 from fastapi import HTTPException
 
 from climate_platform.modules.auth.services.api_key import authenticate
-from climate_platform.common.middleware import charge
+from climate_platform.repositories.access_repository import charge
 from climate_platform.repositories.catalog_repository import metadata_manager
 from climate_platform.config import APIKeyRecord, settings
 from climate_platform.modules.system.readiness import readiness, validate_storage

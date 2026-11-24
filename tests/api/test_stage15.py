@@ -85,10 +85,12 @@ def test_observations_revisions_and_blobs(client):
     old_retry = send(client).json()["metadata"]
     assert old_retry["file_id"] == first["file_id"] and not old_retry["is_current"]
     assert metadata_manager.get_by_file_id(revision["file_id"]).is_current
+    from sqlalchemy.exc import IntegrityError
+
     with metadata_manager.connection() as db:
-        assert db.execute("SELECT COUNT(*) FROM content_blobs").fetchone()[0] == 2
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 1
-        with pytest.raises(sqlite3.IntegrityError):
+        assert db.execute("SELECT COUNT(*) AS n FROM content_blobs").fetchone()["n"] == 2
+        assert db.execute("PRAGMA user_version").fetchone()["user_version"] == 1
+        with pytest.raises(IntegrityError):
             metadata_manager._insert(db, metadata_manager.get_by_file_id(first["file_id"]))
 
 
@@ -144,19 +146,17 @@ def test_file_publish_failure_never_verifies(client, monkeypatch):
 
 
 def test_registry_commit_failure_rolls_back(client, monkeypatch):
-    real_connect = sqlite3.connect
+    from climate_platform.repositories import database as db_module
 
-    class FailingCommit(sqlite3.Connection):
-        def commit(self):
+    real_commit = db_module.DatabaseConnection.commit
+
+    def commit(self):
+        if "ingestion.sqlite3" in str(self._connection.engine.url):
             raise sqlite3.OperationalError("simulated commit failure")
-
-    def connect(*args, **kwargs):
-        if str(args[0]).split("?", 1)[0].endswith("ingestion.sqlite3"):
-            kwargs["factory"] = FailingCommit
-        return real_connect(*args, **kwargs)
+        return real_commit(self)
 
     with monkeypatch.context() as patch:
-        patch.setattr(sqlite3, "connect", connect)
+        patch.setattr(db_module.DatabaseConnection, "commit", commit)
         with pytest.raises(sqlite3.OperationalError):
             send(client)
     assert metadata_manager.list_all() == []

@@ -3,10 +3,10 @@
 Cập nhật: 2026-11-24 (Asia/Saigon). File này là **đề xuất plan**, chưa được giao triển khai.
 Chỉ thực hiện khi người dùng giao task; roadmap không tự cấp quyền.
 
-> **Bổ sung 2026-11-24 (chờ duyệt):** mục **12** đề xuất chuẩn hoá tầng dữ liệu bằng **SQLAlchemy**
-> và tách `entity/` · `repositories/` · `s3/` ra **cấp package** `src/climate_platform/`. Mục 12 nằm
-> ở trạng thái **ĐỀ XUẤT — chờ chốt D16–D23** trước khi viết code. Dependency (`SQLAlchemy==2.0.36`,
-> `alembic==1.14.0`) đã được thêm vào `requirements.txt` và `pyproject.toml`; chưa có thay đổi code.
+> **Bổ sung 2026-11-24 (đã thực hiện):** mục **12** đã chuẩn hoá tầng dữ liệu bằng **SQLAlchemy** và
+> tách `entity/` · `repositories/` · `s3/` ra **cấp package** `src/climate_platform/`. Dependency
+> (`SQLAlchemy==2.0.36`, `alembic==1.14.0`) đã thêm vào `requirements.txt`/`pyproject.toml`; code đã
+> chuyển và test PASS (bằng chứng ở mục 12.11).
 
 > Phần refactor cấu trúc (mục 0–10) **không** đổi hành vi. Yêu cầu "tự động đẩy Bronze → Gold khi
 > đủ điều kiện" là **tính năng mới**, tách riêng ở **mục 11** — không thuộc phạm vi refactor và
@@ -816,7 +816,7 @@ gộp chung phase/commit với 0–7 và **chưa được giao** — cần trả
 - Tính năng auto-promote Bronze→Gold (mục 11, P1–P4): **KHÔNG triển khai** (đúng phạm vi —
   là tính năng mới, cần chốt D11–D15 và task riêng).
 - Chuẩn hoá tầng dữ liệu sang SQLAlchemy + tách `entity/` · `repositories/` · `s3/` (mục **12**):
-  **ĐỀ XUẤT — CHỜ DUYỆT** (chưa viết code; cần chốt D16–D23 trước khi bắt đầu).
+  **DONE** (2026-11-24) — xem bằng chứng ở mục 12.11.
 
 ### Bằng chứng thực thi (2026-11-24)
 
@@ -1099,5 +1099,22 @@ dữ liệu thật khi chưa backup.
 
 ### 12.11 Trạng thái
 
-- **ĐỀ XUẤT — CHỜ DUYỆT.** Chưa viết code. Dependency đã thêm: `SQLAlchemy==2.0.36`, `alembic==1.14.0`.
-- Cần chốt **D16–D23** trước khi bắt đầu **S1**.
+- **DONE** (2026-11-24, Asia/Saigon). Đã thực hiện S1–S5; S6 (Alembic baseline-stamp) **chưa làm** —
+  schema vẫn dựng bằng `Base.metadata` + additive `ALTER`, giữ `PRAGMA user_version`.
+- **Cấu trúc:** `entity/` (`base` + `registry`/`control`/`warehouse`/`access`), `repositories/`
+  (`database` + `catalog`/`auth`/`authorization`/`control`/`access`/`warehouse`_repository + `releases`),
+  `s3/` (`object`/`minio`/`local`_repository + `keys` + `module`). Đã xoá `modules/storage/` và mọi
+  `modules/*/repositories/` (`catalog`, `auth`, `authorization`, `portal`).
+- **Bất biến giữ nguyên:** connection-per-op (`NullPool`), WAL/`synchronous=FULL`/FK, read-only
+  (`mode=ro`), `BEGIN IMMEDIATE`, busy→503, partial index `one_current_revision`, object-key layout,
+  revision/ownership, SQLite backup API.
+- **Bằng chứng (2026-11-24):**
+  - `ruff check --no-cache .` → All checks passed; `ruff format --check --no-cache .` → 146 files formatted.
+  - `pytest -q` (tests/api, backup, infrastructure, portal, release, config, usdm; `TMPDIR` trong
+    `.agents/temp/pytest-tmp`): **114 passed, 5 skipped, 3 failed** — khớp baseline; 3 fail là lỗi môi
+    trường macOS (reader subprocess + `/var` symlink), không do refactor.
+  - Không chạy: `tests/integration/test_loopback.py` (thiếu sibling Client), MinIO/Compose smoke, GIS thật.
+- **Ghi chú thi hành:** catalog dùng ORM entity (`select(Entity)`/`insert`); các repository còn lại chạy
+  SQL hiện hữu qua một connection adapter SQLAlchemy (`repositories/database.py::DatabaseConnection`)
+  để giữ đúng transaction/`BEGIN IMMEDIATE` semantics; `connection()` **không** auto-commit (như
+  `MetadataManager.connection()` gốc), còn `Store.db()`/`warehouse_repository.db()` commit khi thành công.

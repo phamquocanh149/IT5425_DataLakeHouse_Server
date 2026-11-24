@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from fastapi import HTTPException, UploadFile
+from sqlalchemy.exc import OperationalError as SAOperationalError
 
 from climate_platform.repositories.catalog_repository import (
     MetadataManager,
@@ -49,9 +50,7 @@ class MemoryS3:
 def storage(monkeypatch):
     fake = MemoryS3()
     monkeypatch.setattr(settings, "STORAGE_BACKEND", "s3")
-    monkeypatch.setattr(
-        "climate_platform.s3.minio_repository.S3Storage", lambda: fake
-    )
+    monkeypatch.setattr("climate_platform.s3.minio_repository.S3Storage", lambda: fake)
     return fake
 
 
@@ -177,19 +176,17 @@ def test_duplicate_status_is_rechecked_after_verify(storage):
 
 
 def test_commit_failure_keeps_object_for_retry_adoption(storage, monkeypatch):
-    original_connect = sqlite3.connect
+    from climate_platform.repositories import database as db_module
 
-    class FailingCommit(sqlite3.Connection):
-        def commit(self):
+    real_commit = db_module.DatabaseConnection.commit
+
+    def commit(self):
+        if "ingestion.sqlite3" in str(self._connection.engine.url):
             raise sqlite3.OperationalError("injected commit failure")
-
-    def connect(*args, **kwargs):
-        if str(args[0]).split("?", 1)[0].endswith("ingestion.sqlite3"):
-            kwargs["factory"] = FailingCommit
-        return original_connect(*args, **kwargs)
+        return real_commit(self)
 
     with monkeypatch.context() as patch:
-        patch.setattr(sqlite3, "connect", connect)
+        patch.setattr(db_module.DatabaseConnection, "commit", commit)
         with pytest.raises(sqlite3.OperationalError):
             send()
     assert not metadata_manager.list_all() and len(storage.data) == 1
@@ -215,7 +212,7 @@ def test_busy_upload_returns_503_retry_after_and_listing_still_works(client, mon
 
 def test_connection_never_creates_or_migrates_schema(tmp_path):
     manager = MetadataManager(tmp_path / "missing")
-    with pytest.raises(sqlite3.OperationalError):
+    with pytest.raises(SAOperationalError):
         with manager.connection():
             pass
     assert not manager.db_path.exists()
@@ -224,7 +221,7 @@ def test_connection_never_creates_or_migrates_schema(tmp_path):
         writer.execute("BEGIN IMMEDIATE")
         # This would fail if connection() still attempted schema migration.
         with manager.connection() as reader:
-            assert reader.execute("PRAGMA user_version").fetchone()[0] == 1
+            assert reader.execute("PRAGMA user_version").fetchone()["user_version"] == 1
     manager.initialize()  # Explicit startup migration remains idempotent.
 
 
@@ -252,7 +249,7 @@ def test_legacy_schema_is_migrated_explicitly(tmp_path):
             db.execute(f"ALTER TABLE observations DROP COLUMN {field}")
     manager.initialize()
     with manager.connection() as db:
-        fields = {row[1] for row in db.execute("PRAGMA table_info(observations)")}
+        fields = {row["name"] for row in db.execute("PRAGMA table_info(observations)").fetchall()}
         assert {"s3_bucket", "s3_object_key", "s3_version_id"} <= fields
 
 
