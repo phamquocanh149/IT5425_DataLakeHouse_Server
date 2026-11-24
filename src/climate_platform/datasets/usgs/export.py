@@ -14,7 +14,7 @@ from pathlib import Path
 import pyarrow.parquet as pq
 
 from climate_platform.common.clock import utc_now_iso
-from climate_platform.datasets.usgs.crawl import SCHEMA
+from climate_platform.datasets.usgs.bronze import SCHEMA
 from climate_platform.datasets.usgs.paths import job_path
 from climate_platform.datasets.usgs.store import Store
 from climate_platform.medallion.io import write_json_atomic

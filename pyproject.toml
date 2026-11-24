@@ -62,6 +62,9 @@ climate_platform = [
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-v"
+markers = [
+    "gis: end-to-end GIS worker tests; require a GIS interpreter (auto-discovered or USDM_GIS_PYTHON)",
+]
 filterwarnings = ["ignore::DeprecationWarning"]
 norecursedirs = [
     ".git",

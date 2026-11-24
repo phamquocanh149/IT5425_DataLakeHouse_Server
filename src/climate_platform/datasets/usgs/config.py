@@ -1,6 +1,7 @@
-"""USGS crawl configuration.
+"""USGS configuration.
 
-One job: the validated ``Config`` for a USGS crawl (scope, concurrency, output root).
+One job: the validated ``Config`` for USGS (date/region scope and the Bronze output root).
+Shared by the Client's reference crawler (which writes Bronze) and the Server medallion.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ class Config:
     requests_per_second: float = 0.25
     page_size: int = 1000
     retries: int = 6
+    max_pages: int = 100000
 
     def check(self):
         if date.fromisoformat(self.start) > date.fromisoformat(self.end):
@@ -30,8 +32,9 @@ class Config:
             or self.requests_per_second <= 0
             or self.page_size < 1
             or self.retries < 0
+            or self.max_pages < 1
         ):
-            raise ValueError("Invalid concurrency, rate, page size or retries")
+            raise ValueError("Invalid concurrency, rate, page size, retries or page cap")
         if not self.regions or not set(self.regions) <= {f"{i:02d}" for i in range(1, 19)}:
             raise ValueError("regions must be strings 01 through 18")
         return self

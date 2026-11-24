@@ -23,7 +23,7 @@ def main():
             PORTAL_ENABLED="False",
         )
         import climate_platform
-        from climate_platform.api.app import app
+        from climate_platform.app import app
         from climate_platform.config import CHECKOUT_ROOT
         from fastapi.testclient import TestClient
 

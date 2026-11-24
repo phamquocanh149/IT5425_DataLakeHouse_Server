@@ -1,7 +1,10 @@
 """Fail closed on image origin/digest, scan findings or missing SBOM tooling.
 
 Run before deployment with --api-image and --worker-image release references.
-Requires docker and Trivy on PATH. Does not start or replace any containers.
+The MinIO server/client images are read from MINIO_IMAGE and MINIO_MC_IMAGE and must be
+the exact source-built ``noname12346767`` repositories Compose runs, pinned by digest, so
+the gate never accepts an upstream publisher's image or a floating tag. Requires docker and
+Trivy on PATH. Does not start or replace any containers.
 """
 
 import argparse
@@ -27,16 +30,28 @@ def main():
     (output / "verified-images.json").unlink(missing_ok=True)
     evidence = []
     images = []
-    for repo, variable in (("minio", "MINIO_DIGEST"), ("mc", "MINIO_MC_DIGEST")):
-        digest = values.get(variable, "")
-        if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+    for name, variable, repository in (
+        ("minio", "MINIO_IMAGE", "noname12346767/my-minio"),
+        ("mc", "MINIO_MC_IMAGE", "noname12346767/mc-allos"),
+    ):
+        image = values.get(variable, "")
+        if not re.fullmatch(r"[^\s@]+@sha256:[0-9a-f]{64}", image):
             raise SystemExit(
-                f"{variable} must be a verified sha256 digest from quay.io/minio/{repo}"
+                f"{variable} must be a digest-pinned source-built image "
+                f"(<repo>@sha256:<64 hex>), e.g. {repository}@sha256:..."
             )
-        image = f"quay.io/minio/{repo}@{digest}"
-        # Resolve and pull by digest from the official namespace; no third-party mirror fallback.
-        subprocess.run(["docker", "pull", image], check=True)
-        images.append((repo, image, "quay.io/minio"))
+        # The exact repository is enforced: only the two self-built images Compose runs are
+        # accepted, never an upstream publisher's image (quay.io/minio/*, minio/*, ...).
+        if image.split("@", 1)[0] != repository:
+            raise SystemExit(
+                f"{variable} must be the source-built {repository} image, "
+                f"got {image.split('@', 1)[0]}"
+            )
+        # Prefer the already-built local image; otherwise pull that exact reference.
+        # No upstream-registry fallback: the gate checks the image the deployment runs.
+        if subprocess.run(["docker", "image", "inspect", image], capture_output=True).returncode:
+            subprocess.run(["docker", "pull", image], check=True)
+        images.append((name, image, "source-build"))
     images.extend(
         [("api", args.api_image, "local-build"), ("worker", args.worker_image, "local-build")]
     )

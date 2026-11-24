@@ -1,6 +1,6 @@
 """USGS daily-discharge dataset processor (Strategy for the processing engine).
 
-Thin adapter over the USGS medallion package: readiness is the crawl validation plus the raw
+Thin adapter over the USGS medallion package: readiness is the Bronze validation plus the raw
 archive audit; the run delegates Silver -> Weekly -> Gold to ``datasets.usgs.pipeline``. No
 science and no ``sys.path`` reach into the checkout scripts.
 """

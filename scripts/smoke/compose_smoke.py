@@ -96,7 +96,7 @@ def main():
         def verify_storage(count=2):
             code = """
 import json, sqlite3
-from climate_platform.infrastructure.object_store import S3Storage
+from climate_platform.s3.minio_repository import S3Storage
 storage=S3Storage()
 db=sqlite3.connect('/storage/metadata/ingestion.sqlite3')
 db.row_factory=sqlite3.Row

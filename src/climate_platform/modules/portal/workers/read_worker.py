@@ -14,7 +14,12 @@ def memory_limit():
     if os.name != "nt":
         import resource
 
-        resource.setrlimit(resource.RLIMIT_AS, (MEMORY_BYTES, MEMORY_BYTES))
+        try:
+            resource.setrlimit(resource.RLIMIT_AS, (MEMORY_BYTES, MEMORY_BYTES))
+        except (ValueError, OSError):
+            # macOS rejects RLIMIT_AS (and RLIMIT_DATA/RSS); the subprocess timeout and the
+            # output-size caps still bound the reader, so this stays best-effort there.
+            pass
         return None
     import ctypes as c
     from ctypes import wintypes as w

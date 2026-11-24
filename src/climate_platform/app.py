@@ -15,7 +15,8 @@ from starlette.concurrency import run_in_threadpool
 from climate_platform.common.errors import register_exception_handlers
 from climate_platform.common.middleware import AccessMiddleware
 from climate_platform.config import settings
-from climate_platform.repositories.access_repository import initialize_access_store
+from climate_platform.modules.auth.services.api_key import authenticate
+from climate_platform.repositories.access_repository import charge, initialize_access_store
 from climate_platform.repositories.catalog_repository import metadata_manager
 from climate_platform.modules.ingestion.module import build_ingestion_module
 from climate_platform.modules.system.module import build_system_module
@@ -59,7 +60,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.add_middleware(AccessMiddleware)
+app.add_middleware(
+    AccessMiddleware,
+    authenticate=authenticate,
+    charge=charge,
+    max_file_size_bytes=settings.MAX_FILE_SIZE_BYTES,
+)
 register_exception_handlers(app)
 
 # Portal is opt-in; existing collectors and deployment defaults remain unchanged.

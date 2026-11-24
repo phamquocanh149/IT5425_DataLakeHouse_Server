@@ -1,7 +1,7 @@
-"""USGS crawl validation.
+"""USGS Bronze validation.
 
-One job: read the Bronze checkpoint + normalized Parquet and produce the quality report that
-decides whether the crawl is complete enough for the medallion to run.
+One job: read the client-provided Bronze checkpoint + normalized Parquet and produce the
+quality report that decides whether the Bronze is complete enough for the medallion to run.
 """
 
 from __future__ import annotations

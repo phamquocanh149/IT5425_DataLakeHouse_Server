@@ -6,7 +6,7 @@ other weeks and refusing an incompatible schema/profile directory.
 
 from __future__ import annotations
 
-import json
+from climate_platform.medallion.io import atomic_write, read_json, write_json_atomic
 
 
 def write_partition(frame, directory, metadata, incompatible):
@@ -15,7 +15,7 @@ def write_partition(frame, directory, metadata, incompatible):
     directory.mkdir(parents=True, exist_ok=True)
     existing = directory / "schema_metadata.json"
     if existing.exists():
-        old = json.loads(existing.read_text(encoding="utf-8"))
+        old = read_json(existing)
         for key in incompatible:
             if old.get(key) != metadata[key]:
                 raise ValueError(f"Incompatible {key}; choose a new output directory")
@@ -31,9 +31,7 @@ def write_partition(frame, directory, metadata, incompatible):
             chunk = pd.concat([old, chunk], ignore_index=True)
         if chunk.duplicated(["grid_id", "week_date"]).any():
             raise ValueError("Duplicate output keys")
-        target_tmp = target.with_suffix(".tmp.parquet")
-        chunk.sort_values(["week_date", "grid_id"]).to_parquet(target_tmp, index=False)
-        target_tmp.replace(target)
-    (directory / "schema_metadata.json").write_text(
-        json.dumps(metadata, indent=2), encoding="utf-8"
-    )
+        # Atomic write: an interrupted run never leaves a truncated final partition.
+        with atomic_write(target) as temporary:
+            chunk.sort_values(["week_date", "grid_id"]).to_parquet(temporary, index=False)
+    write_json_atomic(directory / "schema_metadata.json", metadata)

@@ -12,11 +12,11 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from fastapi import UploadFile  # noqa: E402
-from climate_platform.catalog.repository import metadata_manager  # noqa: E402
-from climate_platform.catalog.s3_maintenance import migrate_bronze, reconcile_s3  # noqa: E402
+from climate_platform.repositories.catalog_repository import metadata_manager  # noqa: E402
+from climate_platform.modules.catalog.s3_maintenance import migrate_bronze, reconcile_s3  # noqa: E402
 from climate_platform.config import settings  # noqa: E402
-from climate_platform.infrastructure.object_store import S3Storage  # noqa: E402
-from climate_platform.ingestion.service import process_file_upload  # noqa: E402
+from climate_platform.s3.minio_repository import S3Storage  # noqa: E402
+from climate_platform.modules.ingestion.service import process_file_upload  # noqa: E402
 from botocore.exceptions import ClientError  # noqa: E402
 
 
@@ -41,16 +41,16 @@ def main():
         settings.ensure_directories()
         metadata_manager.initialize()
         # A real SQLite commit failure leaves a verified S3 object, but no observation.
-        original_connect = sqlite3.connect
+        from climate_platform.repositories import database as db_module
 
-        class FailingCommit(sqlite3.Connection):
-            def commit(self):
+        real_commit = db_module.DatabaseConnection.commit
+
+        def commit(self):
+            if "ingestion.sqlite3" in str(self._connection.engine.url):
                 raise sqlite3.OperationalError("injected commit failure")
+            return real_commit(self)
 
-        def connect(*args, **kwargs):
-            return original_connect(*args, **kwargs, factory=FailingCommit)
-
-        with patch.object(sqlite3, "connect", connect):
+        with patch.object(db_module.DatabaseConnection, "commit", commit):
             try:
                 send()
                 raise AssertionError("Commit failure expected")

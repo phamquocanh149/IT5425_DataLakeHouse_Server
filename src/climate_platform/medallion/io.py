@@ -84,7 +84,10 @@ def write_text_atomic(path, text) -> None:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_name(target.name + ".tmp")
-    temporary.write_text(text, encoding="utf-8")
+    with temporary.open("w", encoding="utf-8") as handle:
+        handle.write(text)
+        handle.flush()
+        os.fsync(handle.fileno())
     atomic_replace(temporary, target)
 
 

@@ -1,7 +1,7 @@
 """USGS medallion orchestration: plan then execute Silver -> Weekly -> Gold.
 
-One job: decide which stages to build for the current Bronze crawl (plan) and run them in
-order under the shared lock (execute). Science lives in ``silver``/``weekly``/``gold``;
+One job: decide which stages to build for the current client-provided Bronze (plan) and run
+them in order under the shared lock (execute). Science lives in ``silver``/``weekly``/``gold``;
 eligibility lives in ``gate``. ``stop_on_failure`` keeps the fail-closed behaviour.
 """
 

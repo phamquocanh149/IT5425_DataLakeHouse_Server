@@ -12,7 +12,9 @@ from starlette.concurrency import run_in_threadpool
 from climate_platform.modules.portal.errors import PortalError
 
 PREFIX = "/api/portal/v1"
-PUBLIC_PATHS = {PREFIX + "/auth/login", PREFIX + "/auth/info"}
+# Logout is public on purpose: it must stay idempotent so a client whose session already
+# expired can still clear the cookie (no 401 blocking the browser from logging out).
+PUBLIC_PATHS = {PREFIX + "/auth/login", PREFIX + "/auth/info", PREFIX + "/auth/logout"}
 
 LOOPBACK_HOSTS = {"127.0.0.1", "::1", "testclient"}
 LOCAL_HOSTNAMES = {"127.0.0.1", "localhost", "testserver"}
@@ -34,14 +36,12 @@ def category_for(path):
     return "preview" if path.endswith(("/preview", "/map")) else "metadata"
 
 
-async def enforce_csrf_and_cap(request, user, origin):
-    """Reject cross-site writes and cap the buffered write body before routing."""
-    if request.method not in WRITE_METHODS:
-        return
-    if request.headers.get("origin") != origin.rstrip("/") or not secrets.compare_digest(
-        request.headers.get("x-csrf-token", ""), user["csrf"]
-    ):
-        raise PortalError(403, "CSRF_FAILED")
+async def cap_body(request):
+    """Buffer a write body, rejecting an oversized one before routing.
+
+    Applied to public writes too (login): without it an unauthenticated client could force
+    an unbounded read/allocation before the DTO's field bounds are ever evaluated.
+    """
     length = request.headers.get("content-length")
     if length and (not length.isdigit() or int(length) > REQUEST_BODY_LIMIT):
         raise PortalError(413, "REQUEST_TOO_LARGE")
@@ -53,11 +53,24 @@ async def enforce_csrf_and_cap(request, user, origin):
     request._body = bytes(body)
 
 
+async def enforce_csrf_and_cap(request, user, origin):
+    """Reject cross-site writes and cap the buffered write body before routing."""
+    if request.method not in WRITE_METHODS:
+        return
+    if request.headers.get("origin") != origin.rstrip("/") or not secrets.compare_digest(
+        request.headers.get("x-csrf-token", ""), user["csrf"]
+    ):
+        raise PortalError(403, "CSRF_FAILED")
+    await cap_body(request)
+
+
 async def admit(store, request, config, path):
     """Return ``(actor, lease)`` once the request is authenticated and within limits."""
     if path in PUBLIC_PATHS:
         host = request.client.host if request.client else "unknown"
         await run_in_threadpool(store.limit, "auth:" + host, "metadata")
+        if request.method in WRITE_METHODS:
+            await cap_body(request)
         return None, None
     user = await run_in_threadpool(store.session, request.cookies.get("portal_session"), config)
     request.state.portal_user = user

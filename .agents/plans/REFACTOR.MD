@@ -152,8 +152,8 @@ src/climate_platform/
 │   ├── hashing.py             #   SHA-256 file_hash — 1 bản duy nhất dùng cho storage/catalog/release/dataset
 │   ├── fs.py                  #   Helper filesystem dùng chung: contained() (path-containment)
 │   ├── security.py            #   PBKDF2 hash/verify password dùng chung (auth service + repo credentials)
-│   ├── middleware.py          #   Middleware: auth SỚM (trước multipart) + rate limit + accounting + audit
-│   │                          #   (SQL access.sqlite3 → repositories/access_repository.py — mục 12)
+│   ├── middleware.py          #   AccessMiddleware: auth SỚM (trước multipart) + rate limit + accounting + audit;
+│   │                          #   nhận `authenticate`/`charge` inject từ app.py (không import feature module) — mục 12
 │   ├── pipes.py               #   Pipe/validator tái sử dụng (source, date, cursor/limit...)
 │   ├── interceptors.py        #   Interceptor-helper: request-id, security headers, timing
 │   ├── clock.py               #   [mục 15] utc_now_iso() — timestamp UTC dùng chung cho pipeline
@@ -237,9 +237,11 @@ src/climate_platform/
 │   │   ├── __init__.py
 │   │   ├── module.py          #   Wiring: ghép controller + service + guard
 │   │   ├── controller.py      #   Route /upload, /uploads (MỎNG — gọi service, xem mục 13)
-│   │   ├── service.py         #   Nghiệp vụ ingest: stream, SHA-256, size cap, đặt atomic; [mục 13] authorize list + map admin
+│   │   ├── service.py         #   Nghiệp vụ ingest: validate + stage + register; HTTP mapping ở controller; [mục 13] list + map admin
+│   │   ├── transfer.py        #   Stream upload → temp file + SHA-256 + size cap (raise IngestionError)
+│   │   ├── errors.py          #   IngestionError (domain rejection, controller map HTTP)
 │   │   ├── dto.py             #   DTO vào/ra: IngestionResponse
-│   │   └── validation.py      #   Pipe: validate source/source_date/filename (từ ingestion/validation.py)
+│   │   └── validation.py      #   Pipe: validate source/source_date/filename/dataset_key (từ ingestion/validation.py)
 │   ├── catalog/               # Module Catalog: registry metadata + bảo trì/reconcile
 │   │   ├── __init__.py
 │   │   ├── module.py          #   Wiring: service + nhận ObjectRepository từ s3/
@@ -267,13 +269,18 @@ src/climate_platform/
 │       ├── services/          #   Business logic portal (mục 13: controller CHỈ gọi các service này)
 │       │   ├── __init__.py
 │       │   ├── pagination.py  #     phân trang + cursor signature
-│       │   ├── release.py     #     Release facade + resolve release/data
-│       │   ├── selection.py   #     selected()/table()/artifact_list() + luật version/map/lease/stream
-│       │   ├── catalog.py     #     [mục 13] sources/datasets/overview/weeks/versions/attempts
-│       │   ├── admin.py       #     [mục 13] users/grants/audit + precondition/transaction/audit
+│       │   ├── release.py     #     Release facade + resolve release/data (active release qua Store)
+│       │   ├── layers.py      #     LAYERS + artifact_list/layer_status/table (projection một tầng)
+│       │   ├── resolution.py  #     selected(): resolve selection → (rel, obs, build, grants)
+│       │   ├── selection.py   #     SelectionService: create/preview/schema/quality/lineage/map
+│       │   ├── download.py    #     DownloadResult + verify/lease/stream/audit tải artifact
+│       │   ├── catalog.py     #     [mục 13] sources/datasets/overview/weeks/versions/attempts + visible_datasets
+│       │   ├── admin.py       #     [mục 13] users/grants/audit + precondition (SQL/transaction qua repositories)
 │       │   └── publish.py     #     [mới] prepare_release: orchestration publish release (dời khỏi repositories/releases.py)
 │       ├── dto.py             #   DTO: SelectionInput (GrantInput → authorization, UserInput → auth)
-│       ├── middleware.py      #   Middleware portal_access (CSRF, headers, audit) — KHÔNG chứa phân quyền (đã thành guard)
+│       ├── request_policy.py  #   Admission: demo loopback, session, CSRF/body cap, rate limit, lease
+│       ├── headers.py         #   Security/CSP header set
+│       ├── middleware.py      #   portal_access orchestrator (request-id, error map, lease release, audit) — không chứa phân quyền
 │       ├── errors.py          #   HTTP error filter; PortalError re-export từ common/errors.py
 │       └── workers/           #   Tiến trình con tách biệt
 │           ├── __init__.py
@@ -286,8 +293,8 @@ src/climate_platform/
 └── datasets/                  # [mục 15] Plugin dataset — MỖI DATASET CHIA TẦNG MỘT-VIỆC
     ├── noaa/                  #   spec · paths · validation · bronze · gate · silver · gold · pipeline · runner_cli · processor
     ├── usgs/                  #   paths · config · errors · api · store · crawl · validate · export · preprocess
-    │                          #   · grid_huc · manifest · method · silver · weekly · gold · gate · pipeline
-    │                          #   · cli · runner_cli · stage_cli · fill_gold · workflow · processor
+    │                          #   · daily · grid_huc · manifest · method · silver · weekly · aggregate · gold
+    │                          #   · gold_validate · gate · pipeline · cli · runner_cli · stage_cli · workflow · processor
     ├── nldas/                 #   spec · paths · deps · bronze · references · partition · complete · gate
     │                          #   · silver · gold · pipeline · cli · runner_cli · processor
     └── usdm/                  #   bronze · worker · publisher · recipe · warehouse · pipeline · processor
@@ -529,7 +536,7 @@ Quy ước: "Tác dụng" = file để làm gì (trách nhiệm); "Nội dung" =
 | Dataset | Module (mỗi file một việc) |
 |---|---|
 | `noaa/` | `spec` · `paths` · `validation` · `bronze` · `gate` · `silver` · `gold` · `pipeline` · `runner_cli` · `processor` |
-| `usgs/` | `paths` · `config` · `errors` · `api` · `store` · `crawl` · `validate` · `export` · `preprocess` · `grid_huc` · `manifest` · `method` · `silver` · `weekly` · `gold` · `gate` · `pipeline` · `cli` · `runner_cli` · `stage_cli` · `fill_gold` · `workflow` · `processor` |
+| `usgs/` | `paths` · `config` · `errors` · `api` · `store` · `crawl` · `validate` · `export` · `preprocess` · `daily` · `grid_huc` · `manifest` · `method` · `silver` · `weekly` · `aggregate` · `gold` · `gold_validate` · `gate` · `pipeline` · `cli` · `runner_cli` · `stage_cli` · `workflow` · `processor` |
 | `nldas/` | `spec` · `paths` · `deps` · `bronze` · `references` · `partition` · `complete` · `gate` · `silver` · `gold` · `pipeline` · `cli` · `runner_cli` · `processor` |
 | `usdm/` | `bronze` · `worker` · `publisher` · `recipe` · `warehouse` · `pipeline` · `processor` (+ `science.py`, `resources/` byte-pinned) |
 
@@ -927,7 +934,7 @@ gộp chung phase/commit với 0–7 và **chưa được giao** — cần trả
   registry vẫn nằm trong `sqlite_repository.py` và commit cùng transaction như trước.
 - `auth`/`authorization` sở hữu SQL users/sessions/grants; `portal.repositories.store.Store` giữ
   facade delegate để mọi call site và hành vi không đổi (SQL đã dời sang repo).
-- `common/middleware.py` lazy-import `authenticate` từ `modules/auth` để tránh vòng import.
+- `common/middleware.py` không import feature module: `app.py` inject `authenticate` (`modules/auth`) và `charge` (`repositories/access_repository`) vào `AccessMiddleware`.
 - Đã xóa package cũ (`api/`, `catalog/`, `infrastructure/`, `ingestion/`, `processing/`); không
   còn shim (D6). Cập nhật import trong `src`, `tests`, `scripts`, `Dockerfile`, `pyproject.toml`,
   và tài liệu (`AGENTS.md`, `docs/AGENT_MODULES.md`, `README.md`, `docs/STAGE4_*`, `STAGE_1_5_DEMO.md`).

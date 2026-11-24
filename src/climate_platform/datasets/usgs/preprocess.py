@@ -97,7 +97,7 @@ def require_complete(config):
     report = validate(config)
     if not report["all_jobs_successful"]:
         raise ValueError(
-            f"Preprocessing blocked: crawl/validation incomplete; {report['unplanned_jobs']} unplanned jobs, {len(report['unresolved_jobs'])} unresolved jobs. See reports/quality.json"
+            f"Preprocessing blocked: Bronze/validation incomplete; {report['unplanned_jobs']} unplanned jobs, {len(report['unresolved_jobs'])} unresolved jobs. See reports/quality.json"
         )
     return report
 

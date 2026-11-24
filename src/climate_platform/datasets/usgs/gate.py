@@ -1,7 +1,8 @@
 """USGS medallion eligibility gate.
 
-One job: compose the eligibility questions ("crawl validated?", "raw archive audited?") with
-the shared ``AllOf``/``FunctionGate`` contract. The first failure explains why; a gate never
+One job: compose the eligibility questions ("Bronze validated?", "raw archive audited?") with
+the shared ``AllOf``/``FunctionGate`` contract. Eligibility is evaluated over the
+client-provided Bronze the Server reads; the first failure explains why and a gate never
 writes medallion data.
 """
 
@@ -13,13 +14,13 @@ from climate_platform.medallion.contracts import Readiness
 from climate_platform.medallion.gate import AllOf, FunctionGate
 
 
-def _crawl_readiness(cfg) -> Readiness:
+def _bronze_readiness(cfg) -> Readiness:
     report = validate(cfg)
     if not report["all_jobs_successful"]:
         unresolved = len(report["unresolved_jobs"])
         return Readiness(
             False,
-            f"crawl incomplete: {report['unplanned_jobs']} unplanned, {unresolved} unresolved jobs",
+            f"Bronze incomplete: {report['unplanned_jobs']} unplanned, {unresolved} unresolved jobs",
         )
     return Readiness(True, "")
 
@@ -34,7 +35,7 @@ def _raw_audit_readiness(cfg) -> Readiness:
 def conditions_met(cfg) -> Readiness:
     return AllOf(
         [
-            FunctionGate(lambda: _crawl_readiness(cfg)),
+            FunctionGate(lambda: _bronze_readiness(cfg)),
             FunctionGate(lambda: _raw_audit_readiness(cfg)),
         ]
     ).check()

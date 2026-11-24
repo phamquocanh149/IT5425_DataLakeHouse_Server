@@ -1,17 +1,26 @@
+"""USGS reference CLI: full crawl plus gated station preprocessing and medallion dispatch.
+
+Reference only. The Server main flow takes USGS Bronze from the Client; this script is the
+reference crawl/validation/preprocess surface and delegates Silver/Weekly/Gold to the
+package (``runner_cli``/``stage_cli``). The implementation of the crawl lives in the sibling
+``crawl_usgs.py``; the checkout ``src`` directory is added to ``sys.path`` only so this file
+can be executed directly.
+"""
+
 import argparse
 import json
 import sys
 import tomllib
 from pathlib import Path
 
-from climate_platform.datasets.usgs.api import API
-from climate_platform.datasets.usgs.config import Config
-from climate_platform.datasets.usgs.crawl import crawl, discover
-from climate_platform.datasets.usgs.export import compare, export
-from climate_platform.datasets.usgs.preprocess import audit_raw, preprocess
-from climate_platform.datasets.usgs.validate import validate
-from climate_platform.datasets.usgs.workflow import require_api_key, run_all
-from climate_platform.medallion.lock import exclusive_run
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
+
+from climate_platform.datasets.usgs.config import Config  # noqa: E402
+from climate_platform.datasets.usgs.export import compare, export  # noqa: E402
+from climate_platform.datasets.usgs.preprocess import audit_raw, preprocess  # noqa: E402
+from climate_platform.datasets.usgs.validate import validate  # noqa: E402
+from climate_platform.medallion.lock import exclusive_run  # noqa: E402
+from crawl_usgs import API, crawl, discover, require_api_key, run_all  # noqa: E402
 
 
 def main():
@@ -44,7 +53,7 @@ def main():
             print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
             return 1
     parser = argparse.ArgumentParser(
-        description="USGS daily discharge: full crawl and gated station preprocessing"
+        description="USGS daily discharge: full crawl (reference) and gated station preprocessing"
     )
     parser.add_argument(
         "command",
@@ -161,4 +170,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

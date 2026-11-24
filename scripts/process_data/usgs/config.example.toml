@@ -1,0 +1,9 @@
+start = "2020-01-01"
+end = "2022-12-31"
+regions = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18"]
+output = "data_lake/bronze/usgs"
+workers = 2
+# 1 request / 4 seconds = 900 requests/hour across all workers.
+requests_per_second = 0.25
+page_size = 1000
+retries = 6

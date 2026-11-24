@@ -40,9 +40,11 @@ def login_router(service):
 
     @router.post("/auth/logout")
     def logout(request: Request):
+        # Public and idempotent: clearing the cookie must work even after the session expired.
+        user = getattr(request.state, "portal_user", None)
         service.logout(
             request_ctx(request),
-            request.state.portal_user["user_id"],
+            user["user_id"] if user else None,
             request.cookies.get("portal_session", ""),
         )
         response = Response(status_code=204)

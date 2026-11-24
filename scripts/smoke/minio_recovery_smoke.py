@@ -14,11 +14,10 @@ import uuid
 
 
 def main():
-    digest = os.environ.get("MINIO_DIGEST", "")
-    if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
-        raise ValueError("MINIO_DIGEST must be the verified official digest")
+    image = os.environ.get("MINIO_IMAGE", "")
+    if not re.fullmatch(r"[^\s@]+@sha256:[0-9a-f]{64}", image):
+        raise ValueError("MINIO_IMAGE must be the digest-pinned source-built MinIO image")
     api, worker = os.environ["CLIMATE_API_IMAGE"], os.environ["CLIMATE_WORKER_IMAGE"]
-    image = "quay.io/minio/minio@" + digest
     prefix = "stage5-restore-" + uuid.uuid4().hex[:10]
     network, volume = prefix + "-net", prefix + "-data"
     old, new, api_name = (prefix + suffix for suffix in ("-old", "-new", "-api"))

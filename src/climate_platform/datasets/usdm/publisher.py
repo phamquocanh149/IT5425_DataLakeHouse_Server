@@ -32,8 +32,10 @@ def publish_products(root, stage, grid, build, day):
 
 
 def verify_products(root, manifest):
+    resolved_root = root.resolve()
     for product in manifest["products"].values():
         path = root / product["path"]
-        path.resolve().relative_to(root.resolve())
+        if not path.resolve().is_relative_to(resolved_root):
+            raise ValueError("Published product escapes the release root")
         if not path.is_file() or file_hash(path) != product["sha256"]:
             raise ValueError("Published product requires reconciliation")

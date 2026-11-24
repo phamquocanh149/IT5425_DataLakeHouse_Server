@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 def main():
     from climate_platform.config import settings
     from climate_platform.datasets.usdm.processor import DATASET_KEY, package_raw, run_pipeline
-    from climate_platform.infrastructure.object_store import S3Storage
+    from climate_platform.s3.minio_repository import S3Storage
     from scripts.backup.medallion_backup import reconcile, s3_inventory
 
     source = Path("/drill/input")
@@ -31,7 +31,7 @@ def main():
     if sys.argv[1] == "seed":
         import geopandas as gpd
         from shapely.geometry import box
-        from climate_platform.api.access import initialize_access_store
+        from climate_platform.repositories.access_repository import initialize_access_store
 
         with closing(S3Storage().client) as client:
             for _ in range(60):

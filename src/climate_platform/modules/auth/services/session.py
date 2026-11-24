@@ -45,9 +45,11 @@ class SessionService:
         return token, self.payload(user, ctx.request_id)
 
     def logout(self, ctx, user_id, token):
+        """Delete the session and audit it; safe to call with no live session (``user_id`` None)."""
         self.store.sessions.delete(token)
-        with self.store.db() as db:
-            self.store.audit(db, user_id, "logout", None, request_id=ctx.request_id)
+        if user_id:
+            with self.store.db() as db:
+                self.store.audit(db, user_id, "logout", None, request_id=ctx.request_id)
 
     def session(self, user, ctx):
         return self.payload(user, ctx.request_id)
