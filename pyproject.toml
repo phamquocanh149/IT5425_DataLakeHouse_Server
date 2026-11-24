@@ -23,8 +23,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Data Portal (OIDC/session) — same pins as requirements-portal.txt.
-portal = ["PyJWT==2.10.1", "cryptography==50.0.2"]
 # GIS science worker runs on a separate interpreter; kept separate from the API.
 gis = [
     "geopandas==1.2.0",
@@ -38,7 +36,7 @@ gis = [
 dev = ["pytest==8.4.2", "ruff==0.14.5"]
 
 [project.scripts]
-# API server (equivalent to: uvicorn climate_platform.api.app:app).
+# API server (equivalent to: uvicorn climate_platform.app:app).
 climate-platform = "climate_platform.cli:serve"
 # GIS worker used by the USDM processor (installed, no source tree required).
 climate-usdm-worker = "climate_platform.cli:usdm_worker"

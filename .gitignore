@@ -61,3 +61,4 @@ release-artifacts/
 build/
 dist/
 *.egg-info/
+frontend/

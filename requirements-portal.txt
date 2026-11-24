@@ -1,3 +1,2 @@
+# Data Portal uses password/session auth and only needs the base requirements.
 -r requirements.txt
-PyJWT==2.10.1
-cryptography==50.0.2

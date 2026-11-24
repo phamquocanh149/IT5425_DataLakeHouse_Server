@@ -62,14 +62,20 @@ Toàn bộ backend Python là một package cài đặt được: `src/climate_p
 
 ```text
 src/climate_platform/
+  app.py               # AppModule: composition root (uvicorn target)
   config.py            # Pydantic Settings tập trung
   cli.py               # console entry points
-  api/                 # app.py, access.py, security.py, portal/
-  ingestion/           # service.py, validation.py
-  processing/          # contracts.py, engine.py, publisher.py
+  common/              # errors.py, middleware.py, pipes.py, interceptors.py
+  modules/             # feature modules (controller/service/repository/dto)
+    system/            # /livez /readyz /health + readiness
+    auth/              # authentication + session
+    authorization/     # guards/policy/grants
+    ingestion/         # service.py, validation.py, controller.py
+    storage/           # object store repository (MinIO/S3 + local)
+    catalog/           # registry SQLite, service, maintenance
+    processing/        # contracts.py, engine.py, publisher.py
+    portal/            # controllers/, services/, repositories/, workers/
   datasets/usdm/       # processor.py, science.py, resources/
-  catalog/             # repository.py, maintenance.py, s3_maintenance.py
-  infrastructure/      # object_store.py, readiness.py
 ```
 
 Lệnh chạy sau `python -m pip install .` (thêm `[portal]` nếu bật Portal).
@@ -79,7 +85,7 @@ cài đặt thường hoặc wheel. Kết quả kiểm chứng và các gate cò
 [Phase 1 closeout](docs/PHASE1_CLOSEOUT.md).
 
 ```powershell
-uvicorn climate_platform.api.app:app --host 127.0.0.1 --port 8000   # API
+uvicorn climate_platform.app:app --host 127.0.0.1 --port 8000       # API
 climate-usdm-replay --source-root <src> --output-root <out> --gis-python <py>
 python -m climate_platform.datasets.usdm.science --help             # GIS worker
 ```

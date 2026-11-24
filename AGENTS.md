@@ -54,16 +54,21 @@ File này chỉ giữ **rules/convention** để làm việc trong repo. Plan, r
   │   ├── release/               # Gate release: GIS report và image scan
   │   └── smoke/                 # Smoke test và fault assertions
   ├── src/climate_platform/      # Backend Python, package cài được (không còn server/)
-  │   ├── api/
-  │   │   ├── portal/            # Portal API
-  │   │   └── routes/            # HTTP routes
-  │   ├── catalog/               # Registry, repository và maintenance
-  │   ├── datasets/
-  │   │   └── usdm/resources/     # Dataset USDM, science và resources
-  │   ├── infrastructure/        # Object storage và tích hợp hạ tầng
-  │   ├── ingestion/             # Validation và luồng ingest
-  │   ├── processing/            # Xử lý và publish dữ liệu
-  │   └── serving/               # Phục vụ sản phẩm dữ liệu
+  │   ├── app.py                 # AppModule: composition root (uvicorn target)
+  │   ├── config.py              # ConfigModule: Settings/.env
+  │   ├── cli.py                 # Console entry points
+  │   ├── common/                # Cross-cutting: errors, middleware, pipes, interceptors
+  │   ├── modules/               # Feature modules (controller/service/repository/dto)
+  │   │   ├── system/            # /livez /readyz /health + readiness probe
+  │   │   ├── auth/              # Authentication + session
+  │   │   ├── authorization/     # Phân quyền (guards/policy/grants)
+  │   │   ├── ingestion/         # Validation và luồng ingest → Bronze
+  │   │   ├── storage/           # Object storage repository (MinIO/S3 + local Bronze)
+  │   │   ├── catalog/           # Registry SQLite + maintenance/reconcile
+  │   │   ├── processing/        # Processor engine + publisher
+  │   │   └── portal/            # Portal API (opt-in)
+  │   └── datasets/
+  │       └── usdm/resources/     # Dataset USDM, science và resources (byte-pinned)
   ├── tests/                     # Unit/component tests và integration/
   ├── warehouse/                 # Vùng warehouse/runtime
   ├── compose.yaml
@@ -73,11 +78,20 @@ File này chỉ giữ **rules/convention** để làm việc trong repo. Plan, r
   ```
 
 - Chi tiết ánh xạ module: `docs/AGENT_MODULES.md`.
-- Giữ route/lifecycle ở `api/app.py`, validation/stream ở `ingestion/`, registry ở
-  `catalog/repository.py`, S3 ở `infrastructure/object_store.py`, auth/accounting ở
-  `api/access.py`/`api/security.py`, recovery ở `catalog/*maintenance.py`, processor/publish ở
-  `processing/`, Portal API ở `api/portal/`; frontend React ở `../frontend-climate-platform/`.
+- Giữ route/lifecycle ở `app.py`, validation/stream ở `modules/ingestion/`, registry ở
+  `modules/catalog/`, object storage ở `modules/storage/`, auth ở `modules/auth/` và phân quyền ở
+  `modules/authorization/`, recovery ở `modules/catalog/*maintenance.py`, processor/publish ở
+  `modules/processing/`, Portal API ở `modules/portal/`.
 - **Chưa thêm** Kafka/Airflow/DuckDB hoặc broker chỉ để khớp tên dự án.
+
+## Frontend — đã migrate, ngoài phạm vi repo này
+
+- Portal UI (React/TypeScript) **đã migrate sang repository khác**. Mọi thay đổi giao diện Portal
+  thực hiện ở repo frontend tương ứng, không ở repo Server này.
+- Thư mục `frontend/` (nếu còn trong cây làm việc) là bản cũ: **không** chỉnh sửa, build, test,
+  format hay cập nhật nó trong repo này; coi như ngoài phạm vi và không dùng làm bằng chứng.
+- Backend giữ nguyên HTTP/session contract tại `docs/STAGE4_API_CONTRACT.md`; đó là nguồn chuẩn
+  để phía frontend tích hợp.
 
 ## File và thư mục tạm
 
@@ -86,7 +100,8 @@ File này chỉ giữ **rules/convention** để làm việc trong repo. Plan, r
   trong repo.
 - Tạo sẵn thư mục nếu chưa có trước khi ghi file tạm; dùng đường dẫn con rõ ràng bên trong
   `.agents/temp/` (ví dụ `.agents/temp/scratch/`, `.agents/temp/run-<mục-đích>/`).
-- Dọn file tạm sau khi xong việc khi có thể; không commit nội dung `.agents/temp/`.
+- Dọn file tạm sau khi xong việc khi có thể; `.agents/temp/` được ignore trong `.gitignore` nên
+  không commit file tạm mới (file đã track trước đó giữ nguyên).
 
 ## Docker images MinIO
 
@@ -126,6 +141,15 @@ File này chỉ giữ **rules/convention** để làm việc trong repo. Plan, r
 - **Không `docker compose down -v`.** Backup SQLite bằng backup API hoặc pause writers (không chỉ
   copy DB bỏ WAL). Backup S3 theo `docs/MINIO_OPERATIONS.md`, gồm versions cần giữ. Migration/import/
   reconcile trên dữ liệu thật là thao tác riêng có backup, target rõ và kế hoạch restore.
+
+## Git
+
+- **Không bao giờ chạy `git stash`** trong repo này (gồm `git stash push/save/pop/apply/drop/clear`
+  hay mọi biến thể). Không cất thay đổi local của người dùng vào stash.
+- Không `git checkout -- <file>`, `git restore`, `git reset --hard` hay lệnh nào xóa/ghi đè thay đổi
+  chưa commit của người dùng.
+- Khi cần tách thay đổi, chỉ thao tác đúng phạm vi file bằng công cụ đọc/sửa file và `git diff`
+  (read-only); commit chỉ khi người dùng yêu cầu rõ ràng.
 
 ## Bảo mật và cấu hình
 

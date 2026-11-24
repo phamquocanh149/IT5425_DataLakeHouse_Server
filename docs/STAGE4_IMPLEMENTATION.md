@@ -34,7 +34,7 @@ npm.cmd --prefix ../frontend-climate-platform run build
 
 Demo chỉ bind 127.0.0.1, từ chối host/client ngoài loopback và không tin forwarded
 headers. Demo seed tài khoản/mật khẩu công khai trên localhost; **không dùng cho production**.
-Không mount module `climate_platform.api.portal.demo` trong server production.
+Không mount module `climate_platform.modules.portal.workers.demo` trong server production.
 
 ## Dữ liệu thật và cấu trúc
 
@@ -76,10 +76,10 @@ atomic. Không ghi đè release ID. GIS không chạy trong API process.
 
 ## Module và tích hợp
 
-- `src/climate_platform/api/app.py`: opt-in `PORTAL_ENABLED`; mặc định tắt, giữ nguyên API collector.
-- `src/climate_platform/api/portal/auth.py`, `store.py`: đăng nhập username/password (PBKDF2),
+- `src/climate_platform/app.py`: opt-in `PORTAL_ENABLED`; mặc định tắt, giữ nguyên API collector.
+- `src/climate_platform/modules/auth/`, `modules/portal/repositories/store.py`: đăng nhập username/password (PBKDF2),
   cookie HttpOnly, CSRF/Origin, role/grants kiểm tra mỗi request, audit transaction.
-- `api.py`, `app.py`: catalog/selection/preview/map/download và Admin API trong
+- `modules/portal/module.py`, `modules/portal/controllers/*`: catalog/selection/preview/map/download và Admin API trong
   `/api/portal/v1`; SPA cùng origin `/portal/`. Demo dùng cùng module cài routes.
 - `releases.py`, `prepare_gis.py`: serving release immutable và offline cache.
 - `reader.py`, `read_worker.py`: subprocess riêng cho JSON/SQLite reads; timeout

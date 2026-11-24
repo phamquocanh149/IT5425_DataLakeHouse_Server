@@ -1,6 +1,6 @@
 # Stage 4 — Portal API contract v1 (proposed)
 
-**Design approved; routes đã triển khai local trong `src/climate_platform/api/portal/`.**
+**Design approved; routes đã triển khai local trong `src/climate_platform/modules/portal/`.**
 Baseline thiết kế dưới đây được đối chiếu với [implementation](STAGE4_IMPLEMENTATION.md).
 Khác biệt v1 cần biết: login redirect 307; request ID luôn có ở header, một số
 success payload không lặp ID; Admin audit hiện chỉ cửa sổ 1.000 events mới nhất,

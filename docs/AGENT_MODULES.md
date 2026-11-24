@@ -29,6 +29,38 @@ Logic khoa học, chữ ký checksum, revision, lineage và output Bronze/Silver
 giữ nguyên; toàn bộ 130 tests không đổi hành vi. Chi tiết/trạng thái gate xem
 Phase 1 trong [../AGENT.md](../AGENT.md).
 
+## Refactor — kiến trúc module kiểu NestJS (2026-11-24)
+
+Chuyển từ chia theo layer sang **feature modules**: mỗi bounded context là
+`modules/<feature>/` gồm `controller` (route) · `service` (nghiệp vụ) · `repositories/`
+(truy cập dữ liệu) · `dto` (schema) · `guards`. Composition root ở `app.py` (AppModule);
+`config.py` giữ nguyên (ConfigModule). Không đổi hành vi HTTP/schema/hash/revision/object-key.
+
+| Trước (`src/climate_platform/`) | Sau (`src/climate_platform/`) |
+|---|---|
+| `api/app.py` | `app.py` (AppModule, uvicorn target) |
+| `api/access.py` (`authenticate`) | `modules/auth/services/api_key.py` |
+| `api/access.py` (middleware + accounting) | `common/middleware.py` |
+| `api/security.py` | `modules/auth/guards.py` + `modules/authorization/` |
+| `infrastructure/readiness.py` | `modules/system/readiness.py` |
+| `infrastructure/object_store.py` | `modules/storage/repositories/minio_repository.py` + `modules/storage/keys.py` |
+| `ingestion/*` | `modules/ingestion/*` |
+| `catalog/repository.py` (SQL) | `modules/catalog/repositories/sqlite_repository.py` |
+| `catalog/repository.py` (`FileMetadata`, `file_hash`) | `modules/catalog/model.py` |
+| `catalog/repository.py::_register_s3` | `modules/catalog/service.py` |
+| `catalog/{maintenance,s3_maintenance}.py` | `modules/catalog/*` |
+| `processing/*` | `modules/processing/*` |
+| `api/portal/auth.py` | `modules/auth/controllers/{login,session}.py` |
+| `api/portal/{store,releases}.py` | `modules/portal/repositories/{store,releases}.py` |
+| `api/portal/api.py` (926 dòng) | `modules/portal/controllers/{catalog,selection,admin}.py` + `services/*` |
+| `api/portal/{reader,read_worker,prepare_gis,demo}.py` | `modules/portal/workers/*` |
+| `api/portal/{app,config}.py` | `modules/portal/{module,config}.py` |
+| `datasets/usdm/*` | không đổi (plugin, byte-pinned) |
+
+Guard: xác thực ở `modules/auth/guards.py`; phân quyền (role/grant/source) ở
+`modules/authorization/guards/`, export qua `modules/authorization/module.py`.
+Gate/phase chi tiết: [plans/REFACTOR.MD](plans/REFACTOR.MD).
+
 ## Stage 4 — Data Portal: Implemented local, Pending UAT
 
 Ngày 2026-11-22: Mốc A đã được người dùng duyệt, Mốc B đã triển khai và demo bằng

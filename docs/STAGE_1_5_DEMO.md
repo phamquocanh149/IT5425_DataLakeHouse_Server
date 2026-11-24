@@ -17,7 +17,7 @@ N?u c? JSON l?ch s?, ch?y migration v? xem report tr??c demo; kh?ng c?n cho d? l
 ```powershell
 cd climate-platform
 $env:DEBUG='False'
-.\.venv\Scripts\python.exe -m uvicorn climate_platform.api.app:app --host 127.0.0.1 --port 8000
+.\.venv\Scripts\python.exe -m uvicorn climate_platform.app:app --host 127.0.0.1 --port 8000
 ```
 
 ## 2. Health v? upload USDM (terminal B, ~1 ph?t)
