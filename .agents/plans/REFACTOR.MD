@@ -3,6 +3,11 @@
 Cập nhật: 2026-11-24 (Asia/Saigon). File này là **đề xuất plan**, chưa được giao triển khai.
 Chỉ thực hiện khi người dùng giao task; roadmap không tự cấp quyền.
 
+> **Bổ sung 2026-11-24 (chờ duyệt):** mục **12** đề xuất chuẩn hoá tầng dữ liệu bằng **SQLAlchemy**
+> và tách `entity/` · `repositories/` · `s3/` ra **cấp package** `src/climate_platform/`. Mục 12 nằm
+> ở trạng thái **ĐỀ XUẤT — chờ chốt D16–D23** trước khi viết code. Dependency (`SQLAlchemy==2.0.36`,
+> `alembic==1.14.0`) đã được thêm vào `requirements.txt` và `pyproject.toml`; chưa có thay đổi code.
+
 > Phần refactor cấu trúc (mục 0–10) **không** đổi hành vi. Yêu cầu "tự động đẩy Bronze → Gold khi
 > đủ điều kiện" là **tính năng mới**, tách riêng ở **mục 11** — không thuộc phạm vi refactor và
 > cần task/quyết định riêng trước khi triển khai.
@@ -114,6 +119,10 @@ và diff `openapi.json` trước/sau không đổi (trừ thay đổi có chủ 
 
 ## 4. Cấu trúc thư mục đích
 
+> Cây dưới đây là cấu trúc đích **sau refactor 0–10 _và_ mục 12**: `entity/` · `repositories/` ·
+> `s3/` được **nâng ra cấp package** `src/climate_platform/`; `modules/storage/` và mọi
+> `modules/*/repositories/` bị **gỡ bỏ**. Chi tiết tầng dữ liệu ở **mục 12**.
+
 ```text
 src/climate_platform/
 ├── __init__.py
@@ -121,26 +130,54 @@ src/climate_platform/
 ├── config.py                  # ConfigModule: nguồn cấu hình duy nhất (Settings/.env) + PROMOTE_* (mục 11). GIỮ NGUYÊN vị trí (D2)
 ├── cli.py                     # Bootstrap CLI: serve() chạy app; entry point worker/replay + `promote` (mục 11)
 │
-├── common/                    # CROSS-CUTTING dùng chung mọi module (NestJS "common") — KHÔNG chứa business logic
+├── common/                    # CROSS-CUTTING dùng chung mọi module — KHÔNG chứa business logic
 │   ├── __init__.py
 │   ├── errors.py              #   Exception Filter: lỗi domain → HTTP, chuẩn hoá response lỗi
-│   ├── middleware.py          #   Middleware: auth SỚM (trước multipart) + rate limit + accounting + audit cho ingestion
+│   ├── middleware.py          #   Middleware: auth SỚM (trước multipart) + rate limit + accounting + audit
+│   │                          #   (SQL access.sqlite3 → repositories/access_repository.py — mục 12)
 │   ├── pipes.py               #   Pipe/validator tái sử dụng (source, date, cursor/limit...)
 │   └── interceptors.py        #   Interceptor-helper: request-id, security headers, timing
 │
+├── entity/                    # [MỚI — mục 12] SQLAlchemy ORM entity (map bảng ↔ object). Cấp package.
+│   ├── __init__.py
+│   ├── base.py                #   DeclarativeBase + naming_convention + type map (giữ CHECK/UNIQUE/FK)
+│   ├── registry.py            #   ingestion.sqlite3: Observation, ContentBlob, RecoveryReport
+│   ├── control.py             #   control.sqlite3: User, Session, Grant, Transient, Audit, Config, PortalUsage, Lease
+│   ├── warehouse.py           #   warehouse.sqlite3: Build, Attempt, GoldCell (+ view gold_weekly)
+│   └── access.py              #   access.sqlite3: AccessUsage
+│
+├── repositories/              # [MỚI — mục 12] Tầng truy cập dữ liệu SQL (SQLAlchemy). Cấp package.
+│   ├── __init__.py
+│   ├── database.py            #   Engine factory: NullPool + pragma WAL/synchronous/foreign_keys/busy_timeout;
+│   │                          #   engine read-only (mode=ro); event "begin" → BEGIN IMMEDIATE; map BUSY→503
+│   ├── catalog_repository.py  #   observations/content_blobs/revision chain (thay modules/catalog/repositories/sqlite_repository.py)
+│   ├── auth_repository.py     #   users + sessions (gộp user_repository + session_repository)
+│   ├── authorization_repository.py  # grants
+│   ├── control_repository.py  #   transient/usage/leases/audit/config (+ facade Store)
+│   ├── access_repository.py   #   rate-limit/quota accounting (access.sqlite3)
+│   ├── warehouse_repository.py#   builds/attempts/gold_cells (warehouse.sqlite3)
+│   └── releases.py            #   snapshot/backup read-only của release (thay portal/repositories/releases.py)
+│
+├── s3/                        # [MỚI — mục 12] Object storage repository (MinIO/S3 + local Bronze). Cấp package.
+│   ├── __init__.py
+│   ├── object_repository.py   #   Hợp đồng (Protocol) ObjectRepository (publish/verify/get/list)
+│   ├── minio_repository.py    #   Impl MinIO/S3 (gộp S3Storage/boto3)
+│   ├── local_repository.py    #   Impl filesystem Bronze (STORAGE_BACKEND=local)
+│   ├── keys.py                #   object_key builder (layout bất biến)
+│   └── module.py              #   Wiring: object_repository() chọn impl theo STORAGE_BACKEND
+│
 # Guard KHÔNG ở common: xác thực → modules/auth/guards.py; phân quyền → modules/authorization/guards (D8/D9).
-# Không có tầng `infrastructure/` toàn cục (không phải khái niệm NestJS — xem 4.3).
-# Phân bổ: object_store (S3Storage) -> modules/storage; readiness -> modules/system.
+# Repository (SQL/object) KHÔNG nằm trong modules: đặt ở entity/ + repositories/ + s3/ (mục 12).
 ├── modules/                   # Các FEATURE MODULE — mỗi thư mục là một bounded context tự đóng gói
 │   ├── __init__.py
 │   ├── system/                # Module System: sức khoẻ dịch vụ — route /livez /readyz /health + probe phụ thuộc
 │   │   ├── __init__.py
 │   │   ├── module.py          #   Wiring: cung cấp readiness provider cho app
 │   │   ├── controller.py      #   Route /livez, /readyz, /health
-│   │   └── readiness.py       #   Probe SQLite/MinIO/access (từ infrastructure/readiness.py)
+│   │   └── readiness.py       #   Probe SQLite/MinIO/access (đọc qua repositories/ + s3/)
 │   ├── auth/                  # Module Auth: AUTHENTICATION + SESSION (tách khỏi portal — D8). Chỉ trả lời "BẠN LÀ AI"
-│   │   ├── __init__.py
-│   │   ├── module.py          #   Wiring: AuthService + repo + guard xác thực + router
+│   │   ├── __init__.py        #   (repository users/sessions → repositories/auth_repository.py — mục 12)
+│   │   ├── module.py          #   Wiring: AuthService + guard xác thực + router
 │   │   ├── controllers/
 │   │   │   ├── __init__.py
 │   │   │   ├── login.py       #     POST /auth/login (username/password), GET /auth/info, POST /auth/logout
@@ -150,27 +187,19 @@ src/climate_platform/
 │   │   │   ├── password.py    #     verify username/password PBKDF2 (từ api/portal/auth.py)
 │   │   │   ├── session.py     #     tạo/huỷ/đọc session
 │   │   │   └── api_key.py     #     xác thực API key collector (từ api/access.authenticate)
-│   │   ├── repositories/
-│   │   │   ├── __init__.py
-│   │   │   ├── user_repository.py      #   SQLite: users + roles (từ Portal Store)
-│   │   │   ├── session_repository.py   #   SQLite: sessions
-│   │   │   └── api_key_repository.py   #   API keys (settings/static)
 │   │   ├── dto.py             #   DTO: UserInput, SessionOut
 │   │   └── guards.py          #   Guard XÁC THỰC: require_session, require_api_key (D9)
 │   ├── authorization/         # Module Authorization: PHÂN QUYỀN — trả lời "BẠN ĐƯỢC LÀM GÌ". Guard tái dùng (D9)
-│   │   ├── __init__.py
+│   │   ├── __init__.py        #   (repository grants → repositories/authorization_repository.py — mục 12)
 │   │   ├── module.py          #   Wiring: export guard cho module khác inject qua Depends
 │   │   ├── guards/
 │   │   │   ├── __init__.py
 │   │   │   ├── require_role.py     #   Guard: role admin/user
 │   │   │   ├── require_grant.py    #   Guard: quyền theo dataset
 │   │   │   └── require_source.py   #   Guard: allowed sources (upload) — từ api/security.authorize_upload
-│   │   ├── services/
-│   │   │   ├── __init__.py
-│   │   │   └── policy.py      #   role + grants + allowed_sources() (từ api/portal/api.py + api/security.py)
-│   │   └── repositories/
+│   │   └── services/
 │   │       ├── __init__.py
-│   │       └── grant_repository.py #   SQLite: grants (từ Portal Store)
+│   │       └── policy.py      #   role + grants + allowed_sources() (từ api/portal/api.py + api/security.py)
 │   ├── ingestion/             # Module Ingestion: nhận file từ collector → Bronze, dedup, ghi registry
 │   │   ├── __init__.py
 │   │   ├── module.py          #   Wiring: ghép controller + service + guard
@@ -178,26 +207,13 @@ src/climate_platform/
 │   │   ├── service.py         #   Nghiệp vụ ingest: stream, SHA-256, size cap, đặt atomic (từ ingestion/service.py)
 │   │   ├── dto.py             #   DTO vào/ra: IngestionResponse
 │   │   └── validation.py      #   Pipe: validate source/source_date/filename (từ ingestion/validation.py)
-│   ├── storage/               # Module Storage: TẦNG REPOSITORY cho object storage (MinIO/S3 + local Bronze)
+│   ├── catalog/               # Module Catalog: registry metadata + bảo trì/reconcile
 │   │   ├── __init__.py
-│   │   ├── module.py          #   Wiring: chọn impl theo STORAGE_BACKEND
-│   │   ├── repositories/
-│   │   │   ├── __init__.py
-│   │   │   ├── object_repository.py  #   Hợp đồng (Protocol) ObjectRepository (publish/verify/get/list)
-│   │   │   ├── minio_repository.py   #   Impl MinIO/S3 (gộp S3Storage/boto3)
-│   │   │   └── local_repository.py   #   Impl filesystem Bronze (STORAGE_BACKEND=local)
-│   │   └── keys.py            #   object_key builder (layout bất biến)
-│   ├── catalog/               # Module Catalog: registry metadata (SQLite) + bảo trì/reconcile
-│   │   ├── __init__.py
-│   │   ├── module.py          #   Wiring: service + sqlite repository + nhận ObjectRepository từ storage
-│   │   ├── model.py           #   Entity FileMetadata (map DB row ↔ object)
+│   │   ├── module.py          #   Wiring: service + nhận ObjectRepository từ s3/
 │   │   ├── service.py         #   Orchestration registry ↔ object storage (optimistic publish)
-│   │   ├── repositories/
-│   │   │   ├── __init__.py
-│   │   │   └── sqlite_repository.py       #   CHỈ SQLite: observations/content_blobs/revision chain
-│   │   │                                  #   (object storage dùng thẳng ObjectRepository của modules/storage — D10)
 │   │   ├── maintenance.py     #   Migrate/reconcile local (từ catalog/maintenance.py)
 │   │   └── s3_maintenance.py  #   Migrate/reconcile S3 (từ catalog/s3_maintenance.py)
+│   │                          #   (entity FileMetadata → entity/registry.py; repository SQL → repositories/catalog_repository.py — mục 12)
 │   ├── processing/            # Module Processing: chạy processor dataset theo batch (Strategy/Registry)
 │   │   ├── __init__.py
 │   │   ├── module.py          #   Wiring: đăng ký processor (default_registry)
@@ -220,10 +236,6 @@ src/climate_platform/
 │       │   ├── pagination.py  #     phân trang + cursor signature
 │       │   ├── release.py     #     Release facade + resolve release/data
 │       │   └── selection.py   #     selected()/table()/artifact_list()
-│       ├── repositories/      #   Truy cập dữ liệu portal
-│       │   ├── __init__.py
-│       │   ├── store.py       #     SQLite control portal-only: transient/usage/leases/audit/config (users/sessions/grants → auth/authorization)
-│       │   └── releases.py    #     Release bất biến trên filesystem
 │       ├── dto.py             #   DTO: SelectionInput (GrantInput → authorization, UserInput → auth)
 │       ├── middleware.py      #   Middleware portal_access (CSRF, headers, audit) — KHÔNG chứa phân quyền (đã thành guard)
 │       ├── errors.py          #   PortalError + exception filter
@@ -233,6 +245,7 @@ src/climate_platform/
 │           ├── read_worker.py #     Subprocess reader JSON/SQLite
 │           ├── prepare_gis.py #     Offline GIS index (không chạy trong request)
 │           └── demo.py        #     Demo IdP loopback
+│       #   (store.py control → repositories/control_repository.py; releases.py → repositories/releases.py — mục 12)
 │
 └── datasets/usdm/             # Plugin dataset USDM (byte-pinned + subprocess path — GIỮ NGUYÊN, D3)
     ├── processor.py           #   Orchestrate replay USDM Bronze→Silver→Gold
@@ -267,6 +280,11 @@ def ingestion_router(catalog: CatalogService) -> APIRouter:
   (lỗi domain map ở filter).
 - Test của module PASS; route/response không đổi so với baseline.
 
+> **Cập nhật bởi mục 12 (D21):** repository **không** còn nằm trong `modules/*/repositories/`. Tầng
+> dữ liệu được nâng ra **cấp package**: `entity/` (SQLAlchemy entity), `repositories/` (SQL, đặt tên
+> theo **domain**: `catalog_repository.py`, `auth_repository.py`…), `s3/` (object storage). Quy ước
+> "đặt tên theo công nghệ" bên dưới chỉ còn áp dụng cho các impl trong `s3/`.
+
 **Quy ước đặt tên (bắt buộc — "mỗi thứ làm một việc", đọc tên là hiểu):**
 - **Repository đặt tên theo công nghệ**, không theo nghiệp vụ mơ hồ: `sqlite_repository.py` (SQLite)
   vs `minio_repository.py` / `local_repository.py` (object storage/filesystem). Cấm tên kiểu
@@ -278,6 +296,10 @@ def ingestion_router(catalog: CatalogService) -> APIRouter:
   (`catalog`), object storage (`storage`)… Không gộp nhiều vai trò vào một module.
 
 ### 4.2 Tầng repository cho MinIO/S3 (object storage)
+
+> **Cập nhật bởi mục 12:** tầng này được nâng từ `modules/storage/` lên **cấp package `s3/`**
+> (`s3/object_repository.py`, `s3/minio_repository.py`, `s3/local_repository.py`, `s3/keys.py`,
+> `s3/module.py`). Các đường dẫn `modules/storage/*` dưới đây giữ nguyên ý nghĩa, chỉ đổi vị trí sang `s3/`.
 
 Trong repo hiện tại, truy cập MinIO/S3 nằm trực tiếp trong `infrastructure/object_store.py`
 (`S3Storage` + `object_key`) và bị gọi lẫn trong `catalog/repository.py::_register_s3`. Đây là
@@ -793,6 +815,8 @@ gộp chung phase/commit với 0–7 và **chưa được giao** — cần trả
 - Phase 0–7 (refactor thuần): **DONE** (2026-11-24, Asia/Saigon), thực hiện trên một phiên.
 - Tính năng auto-promote Bronze→Gold (mục 11, P1–P4): **KHÔNG triển khai** (đúng phạm vi —
   là tính năng mới, cần chốt D11–D15 và task riêng).
+- Chuẩn hoá tầng dữ liệu sang SQLAlchemy + tách `entity/` · `repositories/` · `s3/` (mục **12**):
+  **ĐỀ XUẤT — CHỜ DUYỆT** (chưa viết code; cần chốt D16–D23 trước khi bắt đầu).
 
 ### Bằng chứng thực thi (2026-11-24)
 
@@ -946,3 +970,134 @@ hiện tại (nếu chưa refactor). Không đổi tên module hiện có:
 - Mục 11: **ĐỀ XUẤT, chưa đặc tả đầy đủ, chưa triển khai.** Cần trả lời D11–D15 trước khi bắt đầu P1.
 - Không phụ thuộc thứ tự với refactor mục 0–10; có thể làm trước/sau, nhưng **không trộn** vào cùng
   phase/commit refactor.
+
+---
+
+## 12. [ĐỀ XUẤT — CHỜ DUYỆT] Chuẩn hoá tầng dữ liệu bằng SQLAlchemy + tách `entity` / `repositories` / `s3`
+
+> Mục này là **đề xuất refactor tầng dữ liệu**, tách biệt section 0–10 (đã **DONE**) và section 11
+> (feature auto-promote). **Chưa viết code.** Cần chốt **D16–D23** (mục 12.3) trước khi bắt đầu S1.
+> Dependency `SQLAlchemy==2.0.36` + `alembic==1.14.0` đã thêm vào `requirements.txt` và `pyproject.toml`.
+
+### 12.1 Mục tiêu
+
+- Thay `sqlite3` + SQL viết tay bằng **SQLAlchemy 2.0 declarative ORM** — truy vấn hướng đối tượng,
+  entity rõ ràng, một nơi khai báo schema.
+- Gom **entity** và **repository** ra **cấp package** `src/climate_platform/entity/` và
+  `src/climate_platform/repositories/` (thay vì rải trong `modules/*/repositories/`).
+- Chuyển toàn bộ thao tác **object storage (MinIO/S3 + local Bronze)** ra
+  `src/climate_platform/s3/` (thay `modules/storage/`).
+- Giữ **nguyên hành vi và bất biến dữ liệu** (mục 2): không đổi HTTP contract, schema, hash/ownership/
+  revision, object-key layout.
+
+### 12.2 Non-goals
+
+- Không gộp 4 file SQLite — giữ tách `ingestion.sqlite3`, `control.sqlite3`, `warehouse.sqlite3`,
+  `access.sqlite3`.
+- **Không** Prisma/TypeScript (Python client đã deprecated — đã loại từ đầu).
+- Không thêm broker/DI framework/CI; không thêm tính năng nghiệp vụ mới.
+- Không đổi hình dạng bảng/khóa/index/constraint đã có — chỉ **biểu diễn lại** bằng SQLAlchemy.
+- Không chạm file byte-pinned (`datasets/usdm/resources/`, `datasets/usdm/science.py`).
+
+### 12.3 Quyết định cần xác nhận (D16–D23)
+
+| # | Quyết định | Đề xuất mặc định |
+|---|---|---|
+| D16 | ORM + migration | **SQLAlchemy 2.0** (declarative `Mapped[]`) + `alembic` |
+| D17 | Tên folder cấp package | `entity/` · `repositories/` · `s3/` (đúng yêu cầu); có thể đổi `entity/`→`entities/` nếu muốn số nhiều |
+| D18 | Số file DB | **Giữ 4** SQLite tách biệt (không gộp) |
+| D19 | Quản lý schema | `initialize()` dựng schema bằng `Base.metadata` + additive `ALTER` như hiện tại; Alembic **baseline-stamp** DB có sẵn (không autogenerate phá schema) |
+| D20 | Chiến lược kết nối | Giữ **connection-per-operation** (`NullPool`) + `PRAGMA`/read-only/`BEGIN IMMEDIATE`; không dùng session pool dài hạn |
+| D21 | Quy ước đặt tên repo | Theo **domain** (`catalog_repository.py`, `auth_repository.py`…) thay quy ước "theo công nghệ" ở mục 4.1 — cập nhật lại plan |
+| D22 | Map lỗi BUSY | Giữ map `OperationalError(BUSY/LOCKED)` → HTTP 503 ở ranh giới repository (ORM không tự nuốt) |
+| D23 | Shim tương thích | **Không** shim `metadata_manager`; cập nhật atomically mọi import (theo D6) |
+
+### 12.4 Cấu trúc thư mục đích
+
+> Cây thư mục đích (đã gộp cả `entity/` · `repositories/` · `s3/` cấp package) nằm ở **mục 4** —
+> đó là nguồn duy nhất, tránh trùng lặp. Mục 12 chỉ ghi chi tiết tầng dữ liệu (12.5–12.8).
+
+### 12.5 Ánh xạ file hiện tại → vị trí mới
+
+| Hiện tại | Đích |
+|---|---|
+| `modules/catalog/model.py::FileMetadata` | `entity/registry.py::Observation` (+ giữ `FileMetadata` như entity-view/DTO nếu cần) |
+| `modules/catalog/repositories/sqlite_repository.py` (`metadata_manager`, `MetadataManager`) | `repositories/catalog_repository.py` |
+| `modules/auth/repositories/user_repository.py` + `session_repository.py` | `repositories/auth_repository.py` |
+| `modules/authorization/repositories/grant_repository.py` | `repositories/authorization_repository.py` |
+| `modules/portal/repositories/store.py` (transient/audit/config/usage/leases) | `repositories/control_repository.py` |
+| `modules/portal/repositories/releases.py` | `repositories/releases.py` |
+| SQL trong `common/middleware.py` (access.sqlite3) | `repositories/access_repository.py` |
+| SQL trong `datasets/usdm/processor.py` (warehouse.sqlite3) | `repositories/warehouse_repository.py` |
+| `modules/storage/{module,keys}.py` + `repositories/{object,minio,local}_repository.py` | `s3/{module,keys,object_repository,minio_repository,local_repository}.py` |
+
+### 12.6 Thiết kế SQLAlchemy (giữ đúng semantics)
+
+- **Engine theo từng DB**, `poolclass=NullPool` (connection-per-op như hiện tại):
+  `create_engine("sqlite:///" + str(db_path), poolclass=NullPool, connect_args={"timeout": busy_timeout})`.
+- **Pragma qua event `connect`**: `journal_mode=WAL`, `synchronous=FULL`, `foreign_keys=ON`, `busy_timeout`.
+- **`BEGIN IMMEDIATE` cho writer**: tắt transaction ngầm của pysqlite (`isolation_level=None`) và
+  `@event.listens_for(engine, "begin")` → `conn.exec_driver_sql("BEGIN IMMEDIATE")` (recipe chuẩn SQLAlchemy
+  cho concurrency SQLite).
+- **Engine read-only** (readiness/release/snapshot): URL `sqlite:///file:<path>?mode=ro&uri=true`.
+- **Partial unique index** `one_current_revision`: `Index(..., unique=True, sqlite_where=text("is_current=1"))`.
+- **CHECK/UNIQUE/FK/composite PK**: biểu diễn bằng `CheckConstraint`/`UniqueConstraint`/`ForeignKey`/
+  `PrimaryKeyConstraint` — **không đổi DDL**.
+- **View `gold_weekly`**: tạo bằng DDL tường minh trong `initialize()` (SQLAlchemy không map view tự động).
+- **`executemany`/raw**: dùng `Connection.exec_driver_sql` / `text()` cho maintenance (giữ nguyên câu lệnh).
+- **`db.backup()`**: `conn.connection.driver_connection.backup(target)` (giữ SQLite backup API, không copy bỏ WAL).
+- **Map lỗi**: `sqlalchemy.exc.OperationalError`/`sqlite3.OperationalError` BUSY/LOCKED → HTTP 503 tại
+  `repositories/database.py`.
+
+### 12.7 Entity theo từng DB
+
+- **ingestion.sqlite3** — `Observation` (PK `file_id`; FK `sha256`→`ContentBlob`, `previous_file_id`→self;
+  UNIQUE `(source,source_date,dataset_key,sha256)` và `(…,revision)`; partial index `one_current_revision`;
+  index `observation_owner`), `ContentBlob` (PK `sha256`), `RecoveryReport`. Giữ `PRAGMA user_version=1`.
+- **control.sqlite3** — `User` (PK `user_id`, UNIQUE `username`), `Session` (PK `token`, FK `user_id`),
+  `Grant` (PK `(user_id,dataset_id,layer)`), `Transient`, `Audit` (PK autoincrement), `Config` (PK `key`),
+  `PortalUsage` (PK `(user_id,category)`), `Lease`.
+- **warehouse.sqlite3** — `Build` (PK `build_id`), `Attempt` (PK autoincrement), `GoldCell`
+  (PK `(build_id,grid)`, FK `build_id`, CHECK `drought IN ('0','D0','D1','D2','D3','D4')`), view `gold_weekly`.
+- **access.sqlite3** — `AccessUsage` (PK `key_id`, `minute/requests/day/bytes`).
+
+### 12.8 Bất biến phải giữ (như mục 2 + 4.2)
+
+- HTTP contract, `dataset_key` optional/fallback, `200 VERIFIED/DUPLICATE`, `metadata.status`, `file_id`,
+  ownership, revision chain, object-key layout, hash semantics: **không đổi**.
+- Không S3 I/O trong writer transaction; conditional PUT `IfNoneMatch="*"`; orphan adoption; fail-closed;
+  không fallback local khi S3 lỗi.
+- SQLite: connection riêng mỗi op, transaction/unique/partial-index giữ nguyên; không đặt active DB lên NFS.
+- Backup/restore giữ qua SQLite backup API (`s3_maintenance`, `release.snapshot`, `scripts/backup/*`).
+- Không sửa file byte-pinned.
+
+### 12.9 Phase đề xuất (giữ app chạy được sau mỗi phase)
+
+| # | Nội dung | Exit criteria |
+|---|---|---|
+| S0 | Baseline: `ruff` + `pytest -q` + snapshot `openapi.json`; backup `.agents/temp/refactor-db/` | PASS + snapshot ghi lại |
+| S1 | `entity/base.py` + `repositories/database.py` (engine/pragma/read-only/BEGIN IMMEDIATE) | Unit test WAL/synchronous/FK/BUSY→503 đúng |
+| S2 | `entity/registry.py` + `repositories/catalog_repository.py`; cập nhật `catalog/{service,module,maintenance,s3_maintenance}.py`, `system/readiness.py` | `tests/api/test_stage2_registry.py`, `tests/backup/*` PASS |
+| S3 | `s3/` (dời `modules/storage`) + cập nhật `datasets/usdm/processor.py`, scripts, tests | `tests/infrastructure/test_s3_keys.py` + smoke fixture PASS |
+| S4 | `entity/control.py` + `repositories/{auth,authorization,control}_repository.py`, `releases.py` | `tests/portal/test_portal.py`, `tests/release/test_stage5_release.py` PASS |
+| S5 | `entity/{access,warehouse}.py` + `repositories/{access,warehouse}_repository.py` (`common/middleware.py`, `usdm/processor.py`) | `tests/api/test_server.py`, `tests/api/test_readiness_security.py`, `tests/usdm/*` PASS |
+| S6 | (tuỳ chọn) Alembic baseline-stamp 4 DB có sẵn; xoá `modules/storage/` + `*/repositories/` cũ; cập nhật docs (`AGENTS.md`, `docs/AGENT_MODULES.md`) + mục 4 plan này | OpenAPI diff = 0; ruff + pytest PASS |
+
+### 12.10 Rủi ro
+
+| Rủi ro | Mức | Giảm thiểu |
+|---|---|---|
+| BEGIN IMMEDIATE bị pysqlite nuốt BEGIN → race writer | Cao | Tắt transaction ngầm (`isolation_level=None`) + event `begin`; test concurrent |
+| ORM tự bọc transaction / bỏ unique constraint | Cao | Giữ connection-per-op; khai báo unique/partial index trong metadata; test duplicate/revision |
+| Đổi DDL ngầm (CHECK/FK/index) | Cao | So `.schema`/`PRAGMA` trước–sau; giữ `user_version` |
+| Alembic autogenerate phá DB thật | Cao | Chỉ **baseline-stamp**; migration thật cần backup + target rõ |
+| Bỏ sót call site (tests/scripts/Docker) | Trung bình | Inventory ở S0 + `grep` mỗi phase |
+| Read-only engine mở nhầm write | Trung bình | URL `mode=ro`; test readiness không tự tạo DB |
+
+**Rollback:** mỗi phase một commit độc lập trên nhánh riêng; không `docker compose down -v`; không sửa
+dữ liệu thật khi chưa backup.
+
+### 12.11 Trạng thái
+
+- **ĐỀ XUẤT — CHỜ DUYỆT.** Chưa viết code. Dependency đã thêm: `SQLAlchemy==2.0.36`, `alembic==1.14.0`.
+- Cần chốt **D16–D23** trước khi bắt đầu **S1**.

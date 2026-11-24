@@ -11,7 +11,7 @@ from fastapi import HTTPException
 
 from climate_platform.modules.auth.services.api_key import authenticate
 from climate_platform.common.middleware import charge
-from climate_platform.modules.catalog.repositories.sqlite_repository import metadata_manager
+from climate_platform.repositories.catalog_repository import metadata_manager
 from climate_platform.config import APIKeyRecord, settings
 from climate_platform.modules.system.readiness import readiness, validate_storage
 from tests.api.test_server import client, setup_test_environment  # noqa: F401

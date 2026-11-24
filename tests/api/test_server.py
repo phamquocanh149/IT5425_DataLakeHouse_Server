@@ -2,7 +2,7 @@ import hashlib
 import pytest
 from fastapi.testclient import TestClient
 
-from climate_platform.modules.catalog.repositories.sqlite_repository import metadata_manager
+from climate_platform.repositories.catalog_repository import metadata_manager
 from climate_platform.config import settings
 from climate_platform.app import app
 

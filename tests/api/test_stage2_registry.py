@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 from fastapi import HTTPException, UploadFile
 
-from climate_platform.modules.catalog.repositories.sqlite_repository import (
+from climate_platform.repositories.catalog_repository import (
     MetadataManager,
     metadata_manager,
 )
@@ -50,7 +50,7 @@ def storage(monkeypatch):
     fake = MemoryS3()
     monkeypatch.setattr(settings, "STORAGE_BACKEND", "s3")
     monkeypatch.setattr(
-        "climate_platform.modules.storage.repositories.minio_repository.S3Storage", lambda: fake
+        "climate_platform.s3.minio_repository.S3Storage", lambda: fake
     )
     return fake
 

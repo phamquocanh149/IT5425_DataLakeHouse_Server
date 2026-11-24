@@ -105,7 +105,7 @@ python -m climate_platform.datasets.usdm.science --help             # GIS worker
 | `S3_ACCESS_KEY` | Tên ingestion riêng do bạn đặt; khác root |
 | `S3_SECRET_KEY` | Mật khẩu ingestion ngẫu nhiên, khác mật khẩu root |
 
-Giữ `STORAGE_BACKEND=s3`, tên bốn bucket và hai digest image trong `.env.example`. Endpoint `http://127.0.0.1:9000` dùng cho công cụ native; Compose tự đặt `http://minio:9000` cho API.
+`STORAGE_BACKEND=s3`, tên bốn bucket và các giới hạn vận hành khác đã được hardcode làm giá trị mặc định trong `src/climate_platform/config.py` (và `compose.yaml`), không cần khai báo trong `.env`; chỉ hai digest image cần điền trong `.env.example`. Endpoint `http://127.0.0.1:9000` dùng cho công cụ native; Compose tự đặt `http://minio:9000` cho API.
 
 Có thể tạo từng khóa bằng PowerShell và lưu kết quả vào `.env`:
 

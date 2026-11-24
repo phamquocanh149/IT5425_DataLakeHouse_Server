@@ -7,7 +7,7 @@ import pytest
 
 from scripts.backup.storage_backup import create, restore, sha256, verify
 from climate_platform.modules.catalog.model import FileMetadata
-from climate_platform.modules.catalog.repositories.sqlite_repository import MetadataManager
+from climate_platform.repositories.catalog_repository import MetadataManager
 
 
 @pytest.fixture

@@ -13,13 +13,13 @@ from fastapi.testclient import TestClient
 
 from climate_platform.modules.portal.module import install_portal
 from climate_platform.modules.portal.config import PortalConfig
-from climate_platform.modules.portal.repositories.releases import (
+from climate_platform.repositories.releases import (
     dataset_id,
     sha256,
     verify_release,
     activate,
 )
-from climate_platform.modules.portal.repositories.store import token_hash
+from climate_platform.repositories.control_repository import token_hash
 
 
 def test_reader_timeout_and_size_budget(portal, monkeypatch):
@@ -44,7 +44,7 @@ def test_reader_timeout_and_size_budget(portal, monkeypatch):
 
 def test_independent_restore_invalidates_sessions(portal):
     from scripts.backup.portal_backup import copy_portal
-    from climate_platform.modules.portal.repositories.store import Store
+    from climate_platform.repositories.control_repository import Store
 
     login(portal)
     destination = portal["root"].parent / (portal["root"].name + "-restore")
