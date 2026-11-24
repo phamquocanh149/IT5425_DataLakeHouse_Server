@@ -119,10 +119,11 @@ class AccessMiddleware:
             )(scope, receive, audited_send)
         finally:
             # Safety net: charge any bytes left when the body was not fully read (abort/
-            # disconnect) so accounting still counts what was received.
+            # disconnect) so accounting still counts what was received. Never mask the
+            # response/exception already in flight.
             try:
                 await flush_bytes()
-            except HTTPException:
+            except Exception:
                 pass
             _emit_audit(
                 audit,

@@ -31,6 +31,24 @@ class GrantRepository:
             )
         return {r["layer"]: json.loads(r["actions"]) for r in rows}
 
+    def actions_by_dataset(self, uid):
+        """All grants of ``uid`` in one query as ``{dataset_id: {layer: [actions]}}``.
+
+        Lets catalog listings resolve visibility once instead of one query per dataset.
+        """
+        with self.store.db() as db:
+            rows = (
+                db.execute(
+                    select(Grant.dataset_id, Grant.layer, Grant.actions).where(Grant.user_id == uid)
+                )
+                .mappings()
+                .all()
+            )
+        result = {}
+        for row in rows:
+            result.setdefault(row["dataset_id"], {})[row["layer"]] = json.loads(row["actions"])
+        return result
+
     def get(self, db, target, dataset_id, layer):
         return (
             db.execute(

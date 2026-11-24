@@ -167,10 +167,11 @@ học giữ nguyên; không thêm upstream downloader vào runtime FastAPI.
   `snapshot_complete`, `default_lock_file` dùng chung cho auto-runner.
 - `scripts/process_data/noaa/noaa_silver_to_gold.py`: tách thân `main()` thành `build_outputs(...)`
   để runner gọi trực tiếp; CLI giữ nguyên hành vi (in report JSON).
-- `scripts/process_data/usgs/run_usgs_bronze_to_gold.py` + `usgs_pipeline/auto.py`: auto-runner USGS.
+- `scripts/process_data/usgs/run_usgs_bronze_to_gold.py` + `datasets/usgs/runner_cli.py`: auto-runner USGS.
   Điều kiện đủ là `validate()` (không unplanned/unresolved job) và `audit_raw()` PASS; build lần
   lượt Silver → Weekly → Gold, mỗi stage bỏ qua khi đã có run hoàn thành cho upstream hiện tại.
-  Thêm lệnh `auto` cho `usgs_pipeline/cli.py` (`python .../run_usgs.py auto`).
+  Lệnh `auto` ở `scripts/process_data/usgs/run_usgs.py auto`; crawler tham khảo ở
+  `scripts/process_data/usgs/crawl_usgs.py` (Bronze do Client cung cấp).
 - `datasets/noaa/processor.py` (`NoaaProcessor`) và `datasets/usgs/processor.py` (`UsgsProcessor`):
   adapter mỏng cho processing engine, tải module runner từ checkout (`CHECKOUT_ROOT`) khi được gọi;
   `discover()` trả readiness, `run()` trả `ProcessingReport`. `default_registry()` đăng ký

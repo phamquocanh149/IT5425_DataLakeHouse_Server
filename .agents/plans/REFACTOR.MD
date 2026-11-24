@@ -292,9 +292,10 @@ src/climate_platform/
 │
 └── datasets/                  # [mục 15] Plugin dataset — MỖI DATASET CHIA TẦNG MỘT-VIỆC
     ├── noaa/                  #   spec · paths · validation · bronze · gate · silver · gold · pipeline · runner_cli · processor
-    ├── usgs/                  #   paths · config · errors · api · store · crawl · validate · export · preprocess
+    ├── usgs/                  #   bronze · paths · config · errors · store · validate · export · preprocess
     │                          #   · daily · grid_huc · manifest · method · silver · weekly · aggregate · gold
-    │                          #   · gold_validate · gate · pipeline · cli · runner_cli · stage_cli · workflow · processor
+    │                          #   · gold_validate · gate · pipeline · runner_cli · stage_cli · processor
+    │                          #   (Bronze từ Client; crawler tham khảo ở scripts/process_data/usgs/)
     ├── nldas/                 #   spec · paths · deps · bronze · references · partition · complete · gate
     │                          #   · silver · gold · pipeline · cli · runner_cli · processor
     └── usdm/                  #   bronze · worker · publisher · recipe · warehouse · pipeline · processor
@@ -536,11 +537,14 @@ Quy ước: "Tác dụng" = file để làm gì (trách nhiệm); "Nội dung" =
 | Dataset | Module (mỗi file một việc) |
 |---|---|
 | `noaa/` | `spec` · `paths` · `validation` · `bronze` · `gate` · `silver` · `gold` · `pipeline` · `runner_cli` · `processor` |
-| `usgs/` | `paths` · `config` · `errors` · `api` · `store` · `crawl` · `validate` · `export` · `preprocess` · `daily` · `grid_huc` · `manifest` · `method` · `silver` · `weekly` · `aggregate` · `gold` · `gold_validate` · `gate` · `pipeline` · `cli` · `runner_cli` · `stage_cli` · `workflow` · `processor` |
+| `usgs/` | `bronze` · `paths` · `config` · `errors` · `store` · `validate` · `export` · `preprocess` · `daily` · `grid_huc` · `manifest` · `method` · `silver` · `weekly` · `aggregate` · `gold` · `gold_validate` · `gate` · `pipeline` · `runner_cli` · `stage_cli` · `processor` |
 | `nldas/` | `spec` · `paths` · `deps` · `bronze` · `references` · `partition` · `complete` · `gate` · `silver` · `gold` · `pipeline` · `cli` · `runner_cli` · `processor` |
 | `usdm/` | `bronze` · `worker` · `publisher` · `recipe` · `warehouse` · `pipeline` · `processor` (+ `science.py`, `resources/` byte-pinned) |
 
 > `scripts/process_data/*` chỉ còn **entrypoint mỏng** gọi package (tham khảo/mẫu), không chứa science.
+> Ngoại lệ có chủ đích: crawler tham khảo (`scripts/process_data/noaa/crawl_noaa_cpc.py`,
+> `scripts/process_data/usgs/crawl_usgs.py`) giữ logic lấy dữ liệu upstream; luồng chính của Server
+> lấy Bronze từ Client, không crawl upstream.
 
 #### `modules/portal/` — API xem/tải 3 tầng (opt-in)
 
@@ -1447,8 +1451,9 @@ Tách toàn bộ xử lý pipeline (Bronze→Silver→Gold + tự động hoá) 
   không shape); `publisher.py` re-export `medallion.publisher`; `default_registry` đăng ký
   `usdm/noaa/usgs/nldas`.
 - `scripts/process_data/*` chỉ còn: NOAA `run_noaa_bronze_to_gold.py` (+ `crawl_noaa_cpc.py`,
-  `verify_noaa.py` tham khảo), USGS `run_usgs.py`/`run_usgs_bronze_to_gold.py`, NLDAS
-  `create_silver.py`/`create_gold.py`/`run_bronze_to_gold.py`, USDM `run_usdm.py`/`verify_usdm.py`.
+  `verify_noaa.py` tham khảo), USGS `run_usgs.py`/`run_usgs_bronze_to_gold.py` (+ `crawl_usgs.py`
+  crawler tham khảo), NLDAS `create_silver.py`/`create_gold.py`/`run_bronze_to_gold.py`, USDM
+  `run_usdm.py`/`verify_usdm.py`.
 
 ### 15.3 Bốn nhóm vấn đề đã sửa
 

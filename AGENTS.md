@@ -53,7 +53,7 @@ File này chỉ giữ **rules/convention** để làm việc trong repo. Plan, r
   │   ├── migration/             # Migration, import và reconcile storage
   │   ├── ops/                   # Công cụ vận hành thủ công và init MinIO
   │   ├── portal/                # Demo, publish và benchmark Portal
-  │   ├── process_data/          # Entrypoint mỏng (tham khảo) gọi package; không chứa science
+  │   ├── process_data/          # Entrypoint mỏng (tham khảo) gọi package; crawler tham khảo (ngoại lệ)
   │   │   ├── nldas/             # NLDAS: create_silver/create_gold/run_bronze_to_gold (thin)
   │   │   ├── noaa/              # NOAA: run_noaa_bronze_to_gold (thin) + crawl/verify (ref)
   │   │   ├── usdm/              # CLI replay/verify USDM (thin)

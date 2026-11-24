@@ -243,5 +243,8 @@ class Store:
     def actions(self, *args, **kwargs):
         return self.grants.actions(*args, **kwargs)
 
+    def actions_by_dataset(self, *args, **kwargs):
+        return self.grants.actions_by_dataset(*args, **kwargs)
+
 
 __all__ = ["Store", "token_hash"]

@@ -19,8 +19,10 @@ def visible_datasets(store, ctx, user_id, rel):
     layer = ctx.params.get("layer")
     if len(q) > 100 or (source and source not in {"usdm"}) or (layer and layer not in LAYERS):
         raise PortalError(422, "INVALID_FILTER")
+    # Resolve every dataset's grants in one query rather than one round-trip per dataset.
+    grants_by_dataset = store.actions_by_dataset(user_id)
     for did, ds in rel.catalog["datasets"].items():
-        grants = store.actions(user_id, did)
+        grants = grants_by_dataset.get(did, {})
         layers = [layer_name for layer_name in LAYERS if "read" in grants.get(layer_name, [])]
         if (
             not layers
