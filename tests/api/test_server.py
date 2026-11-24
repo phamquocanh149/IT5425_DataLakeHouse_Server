@@ -2,9 +2,9 @@ import hashlib
 import pytest
 from fastapi.testclient import TestClient
 
-from climate_platform.catalog.repository import metadata_manager
+from climate_platform.modules.catalog.repositories.sqlite_repository import metadata_manager
 from climate_platform.config import settings
-from climate_platform.api.app import app
+from climate_platform.app import app
 
 # Test client keys
 VALID_KEY_CLIENT01 = "test-only-client01"

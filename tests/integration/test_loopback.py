@@ -64,7 +64,7 @@ class LiveServer:
                 sys.executable,
                 "-m",
                 "uvicorn",
-                "climate_platform.api.app:app",
+                "climate_platform.app:app",
                 "--host",
                 "127.0.0.1",
                 "--port",

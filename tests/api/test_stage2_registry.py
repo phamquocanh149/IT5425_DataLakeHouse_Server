@@ -10,10 +10,13 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 from fastapi import HTTPException, UploadFile
 
-from climate_platform.catalog.repository import MetadataManager, metadata_manager
-from climate_platform.catalog.s3_maintenance import migrate_bronze, reconcile_s3
+from climate_platform.modules.catalog.repositories.sqlite_repository import (
+    MetadataManager,
+    metadata_manager,
+)
+from climate_platform.modules.catalog.s3_maintenance import migrate_bronze, reconcile_s3
 from climate_platform.config import settings
-from climate_platform.ingestion.service import process_file_upload
+from climate_platform.modules.ingestion.service import process_file_upload
 from tests.api.test_server import client, setup_test_environment  # noqa: F401
 
 
@@ -46,8 +49,9 @@ class MemoryS3:
 def storage(monkeypatch):
     fake = MemoryS3()
     monkeypatch.setattr(settings, "STORAGE_BACKEND", "s3")
-    monkeypatch.setattr("climate_platform.infrastructure.object_store.S3Storage", lambda: fake)
-    monkeypatch.setattr("climate_platform.catalog.s3_maintenance.S3Storage", lambda: fake)
+    monkeypatch.setattr(
+        "climate_platform.modules.storage.repositories.minio_repository.S3Storage", lambda: fake
+    )
     return fake
 
 

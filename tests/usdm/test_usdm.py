@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from climate_platform.catalog.repository import file_hash
+from climate_platform.modules.catalog.model import file_hash
 from climate_platform.config import settings
 from climate_platform.datasets.usdm import processor as usdm
 

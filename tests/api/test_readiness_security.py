@@ -9,10 +9,11 @@ import pytest
 from botocore.exceptions import ClientError
 from fastapi import HTTPException
 
-from climate_platform.api.access import authenticate, charge
-from climate_platform.catalog.repository import metadata_manager
+from climate_platform.modules.auth.services.api_key import authenticate
+from climate_platform.common.middleware import charge
+from climate_platform.modules.catalog.repositories.sqlite_repository import metadata_manager
 from climate_platform.config import APIKeyRecord, settings
-from climate_platform.infrastructure.readiness import readiness, validate_storage
+from climate_platform.modules.system.readiness import readiness, validate_storage
 from tests.api.test_server import client, setup_test_environment  # noqa: F401
 
 
@@ -47,7 +48,7 @@ def test_writer_lock_and_recovery(client, monkeypatch):
 
 
 def test_s3_failure_cached_and_recovery(client, monkeypatch):
-    import climate_platform.infrastructure.readiness as module
+    import climate_platform.modules.system.readiness as module
 
     fake = MagicMock()
     fake.__enter__.return_value = fake
@@ -64,7 +65,7 @@ def test_s3_failure_cached_and_recovery(client, monkeypatch):
 
 
 def test_startup_storage_contract(client, monkeypatch):
-    import climate_platform.infrastructure.readiness as module
+    import climate_platform.modules.system.readiness as module
 
     fake = MagicMock()
     fake.__enter__.return_value = fake
@@ -181,7 +182,7 @@ def test_rotation_cannot_reset_client_limits(client, monkeypatch):
 
 
 def test_optional_storage_controls(client, monkeypatch):
-    import climate_platform.infrastructure.readiness as module
+    import climate_platform.modules.system.readiness as module
 
     fake = MagicMock()
     fake.__enter__.return_value = fake
@@ -217,7 +218,7 @@ def test_optional_storage_controls(client, monkeypatch):
 
 def test_startup_rejects_invalid_dependencies(monkeypatch):
     from fastapi.testclient import TestClient
-    import climate_platform.api.app as main
+    import climate_platform.app as main
 
     def fail():
         raise RuntimeError("invalid storage configuration")

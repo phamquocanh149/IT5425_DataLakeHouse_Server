@@ -2,7 +2,7 @@ import hashlib
 
 import pytest
 
-from climate_platform.infrastructure.object_store import object_key
+from climate_platform.modules.storage.keys import object_key
 
 
 def test_partition_keys_preserve_scientific_identity_safely():

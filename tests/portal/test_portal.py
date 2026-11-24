@@ -11,16 +11,21 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from climate_platform.api.portal.app import install_portal
-from climate_platform.api.portal.config import PortalConfig
-from climate_platform.api.portal.releases import dataset_id, sha256, verify_release, activate
-from climate_platform.api.portal.store import token_hash
+from climate_platform.modules.portal.module import install_portal
+from climate_platform.modules.portal.config import PortalConfig
+from climate_platform.modules.portal.repositories.releases import (
+    dataset_id,
+    sha256,
+    verify_release,
+    activate,
+)
+from climate_platform.modules.portal.repositories.store import token_hash
 
 
 def test_reader_timeout_and_size_budget(portal, monkeypatch):
     import subprocess
-    from climate_platform.api.portal import reader
-    from climate_platform.api.portal.store import PortalError
+    from climate_platform.modules.portal.workers import reader
+    from climate_platform.modules.portal.errors import PortalError
 
     large = portal["root"] / "large.json"
     large.write_bytes(b" " * (1024 * 1024 + 1))
@@ -39,7 +44,7 @@ def test_reader_timeout_and_size_budget(portal, monkeypatch):
 
 def test_independent_restore_invalidates_sessions(portal):
     from scripts.backup.portal_backup import copy_portal
-    from climate_platform.api.portal.store import Store
+    from climate_platform.modules.portal.repositories.store import Store
 
     login(portal)
     destination = portal["root"].parent / (portal["root"].name + "-restore")
@@ -61,7 +66,7 @@ def test_independent_restore_invalidates_sessions(portal):
 
 
 def test_password_login_accepts_and_rejects(portal):
-    from climate_platform.api.portal.store import PortalError
+    from climate_platform.modules.portal.errors import PortalError
 
     c = portal["client"]
     assert (
@@ -103,7 +108,7 @@ def test_disabled_user_cannot_login(portal):
 
 
 def test_admin_creates_user_resets_password_and_missing_target(portal):
-    from climate_platform.api.portal.store import PortalError
+    from climate_platform.modules.portal.errors import PortalError
 
     login(portal, username="admin", role="Admin", layers=())
     c = portal["client"]
@@ -578,7 +583,7 @@ def test_quota_and_concurrency_limits(portal):
     store = portal["store"]
     first = store.acquire(user["user_id"], "download", 2, 60)
     second = store.acquire(user["user_id"], "download", 2, 60)
-    from climate_platform.api.portal.store import PortalError
+    from climate_platform.modules.portal.errors import PortalError
 
     with pytest.raises(PortalError):
         store.acquire(user["user_id"], "download", 2, 60)
