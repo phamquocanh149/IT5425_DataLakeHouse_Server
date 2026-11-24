@@ -7,8 +7,8 @@ already complete in Silver/Gold are skipped, so a scheduled rerun is cheap and
 idempotent. Bronze stays read-only; only Silver/Gold partitions are written.
 
 Example:
-    python scripts/nldas/run_bronze_to_gold.py --dry-run
-    python scripts/nldas/run_bronze_to_gold.py --json --report data_lake/temp/nldas.json
+    python scripts/process_data/nldas/run_bronze_to_gold.py --dry-run
+    python scripts/process_data/nldas/run_bronze_to_gold.py --json --report data_lake/temp/nldas.json
 """
 
 import argparse

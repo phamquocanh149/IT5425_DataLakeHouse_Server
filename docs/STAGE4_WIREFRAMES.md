@@ -19,10 +19,10 @@ Các số trong mock là baseline Stage 3 hoặc ký hiệu minh họa, UI thự
 +------------------------------------------------------------------+
 ```
 
-Chuyển tới IdP; không nhập API key, mật khẩu MinIO hoặc mật khẩu vào Portal.
+Nhập username/password cục bộ trong Portal; không nhập API key hoặc mật khẩu MinIO.
 Đăng nhập xong trở lại internal route đã yêu cầu, không cho open redirect ra ngoài.
 Đã login nhưng chưa được grant: vào Overview với hướng dẫn xin cấp quyền.
-IdP lỗi: thông báo “Chưa thể đăng nhập”, nút thử lại, request ID; không lộ token.
+Sai credentials: thông báo “Chưa thể đăng nhập”, nút thử lại, request ID; không lộ chi tiết.
 
 ## W2 — Overview `/portal`
 

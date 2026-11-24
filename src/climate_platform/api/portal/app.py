@@ -17,6 +17,7 @@ from .auth import auth_router
 from .store import Store, PortalError
 
 PREFIX = "/api/portal/v1"
+PUBLIC_PATHS = {PREFIX + "/auth/login", PREFIX + "/auth/info"}
 logger = logging.getLogger("climate_platform.portal")
 
 
@@ -38,6 +39,7 @@ def error_response(exc, request_id):
 def install_portal(app, config):
     store = Store(config.storage_root)
     store.initialize()
+    store.ensure_bootstrap(config.bootstrap_username, config.bootstrap_password)
     app.state.portal_config = config
     app.state.portal_store = store
 
@@ -58,7 +60,7 @@ def install_portal(app, config):
     @app.middleware("http")
     async def portal_access(request: Request, call_next):
         path = request.url.path
-        if not path.startswith((PREFIX, "/portal", "/demo-idp")):
+        if not path.startswith((PREFIX, "/portal")):
             return await call_next(request)
         request.state.request_id = secrets.token_hex(12)
         lease = None
@@ -72,7 +74,7 @@ def install_portal(app, config):
                 if request.url.hostname not in {"127.0.0.1", "localhost", "testserver"}:
                     raise PortalError(403, "LOOPBACK_DEMO_ONLY")
             if path.startswith(PREFIX):
-                if path in {PREFIX + "/auth/login", PREFIX + "/auth/callback"}:
+                if path in PUBLIC_PATHS:
                     await run_in_threadpool(
                         store.limit,
                         "auth:" + (request.client.host if request.client else "unknown"),

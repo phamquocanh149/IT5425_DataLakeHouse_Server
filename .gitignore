@@ -50,6 +50,10 @@ data_lake/temp/*
 backup-*/
 storage.tgz
 
+# Temporary work area (xem AGENTS.md)
+.agents/temp/*
+!.agents/temp/.gitkeep
+
 security-artifacts/
 release-artifacts/
 .api-venv/

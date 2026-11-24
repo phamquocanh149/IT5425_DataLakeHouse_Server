@@ -16,7 +16,7 @@ Tham chiếu [kiến trúc/quyền/selection](STAGE4_DESIGN.md).
 
 - Prefix `/api/portal/v1`; JSON UTF-8; date `YYYY-MM-DD`, timestamp RFC3339 UTC.
 - Cùng origin với frontend. Session cookie, backend authorization trên mọi route
-  trừ auth login/callback. CSRF + Origin cho mọi phương thức thay đổi trạng thái.
+  trừ `/auth/login` và `/auth/info`. CSRF + Origin cho mọi phương thức thay đổi trạng thái.
 - Không query param path, bucket, SQL, Python executable, source-root hay raw URL.
 - dataset_id là opaque ID ánh xạ source/dataset_key trong catalog release; giữ ổn định
   giữa releases: đề xuất `ds_` + SHA-256 của source, ký tự NUL phân cách và dataset_key
@@ -32,11 +32,13 @@ Tham chiếu [kiến trúc/quyền/selection](STAGE4_DESIGN.md).
 
 | Method / route | Input | Response / điều kiện |
 |---|---|---|
-| GET `/auth/login` | `return_to` chỉ internal `/portal/...` | 302 tới IdP, state/nonce/PKCE do Server tạo |
-| GET `/auth/callback` | OIDC code/state | Xác minh, rotate cookie, 303 về Portal; không trả token vào JS |
-| GET `/session` | Cookie | 200 user_id/display_name/role/csrf_token; 401 nếu invalid |
+| GET `/auth/info` | Không | 200 `demo` và danh sách tài khoản demo khi `demo=true`; rỗng ngoài demo |
+| POST `/auth/login` | `username`, `password` | 200 user/role/csrf_token, set cookie HttpOnly; 401 sai credentials/disabled |
+| GET `/session` | Cookie | 200 user_id/username/display_name/role/csrf_token; 401 nếu invalid |
 | POST `/auth/logout` | CSRF header | 204, hủy session Server/cookie |
-| GET `/admin/users` | `q`, `limit`, `cursor` | Admin; user_id/display_name/role/enabled/version |
+| POST `/admin/users` | `username`, `display_name`, `role`, `password` | Admin; 201 user mới; 409 nếu trùng username |
+| PUT `/admin/users/{id}/password` | `password`; `If-Match: <version>` | Admin; 204, reset mật khẩu; 404/412/428 |
+| GET `/admin/users` | `q`, `limit`, `cursor` | Admin; user_id/username/display_name/role/enabled/version |
 | PATCH `/admin/users/{id}` | `role`, `enabled`; `If-Match: <version>` | Admin; 200 user mới/version; cấm tự đổi role/enabled, bảo vệ Admin cuối |
 | GET `/admin/datasets` | `q`, `limit`, `cursor` | Admin; ID/source/display_name/layers, không rows/quality/artifacts |
 | GET `/admin/users/{id}/grants` | Pagination | Admin; danh sách grant + version |

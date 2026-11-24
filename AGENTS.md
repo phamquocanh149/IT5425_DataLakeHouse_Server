@@ -37,7 +37,8 @@ File này chỉ giữ **rules/convention** để làm việc trong repo. Plan, r
   climate-platform/
   ├── .agents/
   │   ├── plans/                 # Roadmap và trạng thái các stage
-  │   └── skills/                # Hướng dẫn riêng của repo
+  │   ├── skills/                # Hướng dẫn riêng của repo
+  │   └── temp/                  # Bắt buộc: mọi file/thư mục tạm để ở đây
   ├── data_lake/                 # Dữ liệu runtime; bảo toàn dữ liệu hiện có
   ├── deploy/                    # Cấu hình triển khai, ví dụ nginx.conf
   ├── docs/                      # Tài liệu; security/ chứa tài liệu bảo mật
@@ -47,9 +48,11 @@ File này chỉ giữ **rules/convention** để làm việc trong repo. Plan, r
   │   ├── migration/             # Migration, import và reconcile storage
   │   ├── ops/                   # Công cụ vận hành thủ công và init MinIO
   │   ├── portal/                # Demo, publish và benchmark Portal
+  │   ├── process_data/          # CLI xử lý dữ liệu theo batch
+  │   │   ├── nldas/             # NLDAS Bronze -> Silver -> Gold medallion
+  │   │   └── usdm/              # CLI replay/verify USDM
   │   ├── release/               # Gate release: GIS report và image scan
-  │   ├── smoke/                 # Smoke test và fault assertions
-  │   └── usdm/                  # CLI replay/verify USDM
+  │   └── smoke/                 # Smoke test và fault assertions
   ├── src/climate_platform/      # Backend Python, package cài được (không còn server/)
   │   ├── api/
   │   │   ├── portal/            # Portal API
@@ -75,6 +78,15 @@ File này chỉ giữ **rules/convention** để làm việc trong repo. Plan, r
   `api/access.py`/`api/security.py`, recovery ở `catalog/*maintenance.py`, processor/publish ở
   `processing/`, Portal API ở `api/portal/`; frontend React ở `../frontend-climate-platform/`.
 - **Chưa thêm** Kafka/Airflow/DuckDB hoặc broker chỉ để khớp tên dự án.
+
+## File và thư mục tạm
+
+- **Mọi file/thư mục tạm bắt buộc đặt trong `.agents/temp/`.** Không tạo file/thư mục tạm rải rác
+  ở root, `scripts/`, `src/`, `tests/`, `data_lake/`, `metadata/`, `warehouse/` hay bất kỳ đâu khác
+  trong repo.
+- Tạo sẵn thư mục nếu chưa có trước khi ghi file tạm; dùng đường dẫn con rõ ràng bên trong
+  `.agents/temp/` (ví dụ `.agents/temp/scratch/`, `.agents/temp/run-<mục-đích>/`).
+- Dọn file tạm sau khi xong việc khi có thể; không commit nội dung `.agents/temp/`.
 
 ## Docker images MinIO
 

@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 def main():
     import uvicorn
     from climate_platform.api.portal.config import PortalConfig
-    from climate_platform.api.portal.demo import create_demo_app
+    from climate_platform.api.portal.demo import DEMO_USERS, create_demo_app
 
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--port", type=int, default=8010)
@@ -23,9 +23,8 @@ def main():
         enabled=True,
         demo=True,
         origin=origin,
-        oidc_issuer=origin + "/demo-idp",
         storage_root=a.portal_root,
-        bootstrap_subject="admin",
+        demo_accounts=DEMO_USERS,
     )
     app = create_demo_app(cfg)
     print(f"Climate Atlas demo: {origin}/portal/", flush=True)

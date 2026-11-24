@@ -70,7 +70,7 @@ nghiệm thu. Đường dẫn code theo package `src/climate_platform/` (xem
 | `GET /uploads?source=...` | `X-API-Key`; JSON list metadata, source filter tùy chọn. Collector chỉ xem record của mình trong source được phép; admin xem toàn bộ. Không phân trang, không chỉ lọc VERIFIED/current. |
 
 Ingestion không có `/register`, `/verify`, `/ingest` hoặc SQL tùy ý. Portal có preview/map/download
-riêng dưới `/api/portal/v1`, dùng OIDC/session/grants. Client không gửi `client_id`; key quyết định
+riêng dưới `/api/portal/v1`, dùng username/password/session/grants. Client không gửi credentials; key quyết định
 identity. `source` được strip/lower và thuộc `usdm/noaa/usgs/nldas`; date Server parse rồi chuẩn hóa
 `YYYY-MM-DD`, Client kiểm tra format nghiêm ngặt trước khi gửi. File không rỗng, mặc định tối đa
 **20 MiB**; middleware giới hạn toàn multipart body ở file limit + 1 MiB.

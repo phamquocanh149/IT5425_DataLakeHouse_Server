@@ -21,7 +21,7 @@ Chi tiết bằng chứng xem [STAGE_5_CHECKPOINT.md](STAGE_5_CHECKPOINT.md) m�
 
 | ID | Vấn đề có căn cứ | Tiếp theo / trạng thái |
 |---|---|---|
-| S5.08 | `historical_recipes/` không tồn tại nhưng khai báo trong package-data; `cryptography==50.0.2` chưa xác minh khả dụng | NEEDS VERIFICATION — clean `pip install`/`build`/`pip check` |
+| S5.08 | `historical_recipes/` không tồn tại nhưng khai báo trong package-data (extra `portal`/`cryptography` đã bỏ khi chuyển sang password auth) | NEEDS VERIFICATION — clean `pip install`/`build`/`pip check` |
 | S5.09 | Compose cần `MINIO_DIGEST`/`MINIO_MC_DIGEST` và artifacts; repo sạch không tự dựng | NEEDS VERIFICATION — template biến nền trường, image pin từ artifacts |
 | S5.10 | Import `pyproj.crs`/`transformer` lệch pin `pyproj==3.8.0` | NEEDS VERIFICATION — chạy GIS smoke với pin đúng |
 | S5.11 | Chưa chốt đường cài canonical giữa `pyproject.toml` và `requirements*.txt` cho môi trường local | TODO |

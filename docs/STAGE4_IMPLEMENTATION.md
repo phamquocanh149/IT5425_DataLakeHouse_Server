@@ -2,19 +2,19 @@
 
 Cập nhật 2026-11-22 (Asia/Saigon). Mốc A đã được người dùng duyệt; Mốc B đã có
 implementation và kiểm chứng local. **Stage 4 chưa Completed: chờ user UAT và
-nghiệm thu cấu hình triển khai thực tế.** IdP demo localhost đã được người dùng chọn.
+nghiệm thu cấu hình triển khai thực tế.** Demo dùng tài khoản/mật khẩu cục bộ.
 
 ## Mở demo
 
 Truy cập **http://127.0.0.1:8010/portal/** trên máy chạy workspace.
-Chọn đăng nhập rồi chọn một danh tính demo, không cần mật khẩu:
+Chọn một tài khoản demo (nút điền sẵn username/mật khẩu) rồi đăng nhập:
 
-| Danh tính | Quyền demo |
-|---|---|
-| Minh Anh · Viewer | Xem/tải Bronze, Silver, Gold |
-| Hoàng Nam · Operator | Như Viewer, thêm lịch sử attempts đã lưu |
-| Quản trị · Admin | Quản lý role/grants; có grants dữ liệu được seed riêng |
-| Khách · Chỉ xem Gold | Chỉ Gold read, download bị chặn |
+| Tài khoản | Mật khẩu | Danh tính · quyền demo |
+|---|---|---|
+| viewer | viewer-demo | Minh Anh · Viewer — xem/tải Bronze, Silver, Gold |
+| operator | operator-demo | Hoàng Nam · Operator — như Viewer, thêm lịch sử attempts đã lưu |
+| admin | admin-demo | Quản trị · Admin — quản lý role/grants; có grants dữ liệu seed riêng |
+| restricted | restricted-demo | Khách · Chỉ xem Gold — chỉ Gold read, download bị chặn |
 
 Đi từ Tổng quan → Danh mục dữ liệu → tuần → Bronze/Silver/Gold. Dataset Detail có
 bảng, bản đồ, schema, quality, lineage và lịch sử. Bronze xem inventory của ZIP;
@@ -33,7 +33,7 @@ npm.cmd --prefix ../frontend-climate-platform run build
 ```
 
 Demo chỉ bind 127.0.0.1, từ chối host/client ngoài loopback và không tin forwarded
-headers. Demo IdP có chooser công khai trên localhost; **không dùng làm IdP production**.
+headers. Demo seed tài khoản/mật khẩu công khai trên localhost; **không dùng cho production**.
 Không mount module `climate_platform.api.portal.demo` trong server production.
 
 ## Dữ liệu thật và cấu trúc
@@ -77,7 +77,7 @@ atomic. Không ghi đè release ID. GIS không chạy trong API process.
 ## Module và tích hợp
 
 - `src/climate_platform/api/app.py`: opt-in `PORTAL_ENABLED`; mặc định tắt, giữ nguyên API collector.
-- `src/climate_platform/api/portal/auth.py`, `store.py`: OIDC Code + PKCE/nonce/state, RS256/JWKS,
+- `src/climate_platform/api/portal/auth.py`, `store.py`: đăng nhập username/password (PBKDF2),
   cookie HttpOnly, CSRF/Origin, role/grants kiểm tra mỗi request, audit transaction.
 - `api.py`, `app.py`: catalog/selection/preview/map/download và Admin API trong
   `/api/portal/v1`; SPA cùng origin `/portal/`. Demo dùng cùng module cài routes.
@@ -124,11 +124,11 @@ npm.cmd --prefix ../frontend-climate-platform run build
 npm.cmd --prefix ../frontend-climate-platform run test:e2e
 ```
 
-Browser tests dùng Chrome thật, dữ liệu Stage 3 thật và OIDC localhost: overview
+Browser tests dùng Chrome thật, dữ liệu Stage 3 thật và tài khoản demo localhost: overview
 counts; preview ba layer; tải ZIP/Parquet/CSV và hash; geometry thật đã render;
 Operator/Admin/limited Viewer; mobile không overflow; loading/empty/503/retry/expiry.
 Ảnh và trace khi lỗi ở `../frontend-climate-platform/test-results` (không commit).
-API tests gồm signed JWT sai signature/nonce/issuer/audience/expiry; revoke,
+API tests gồm login đúng/sai/disabled và reset mật khẩu; revoke,
 CSRF, cursor, history, release switch, không fallback, corrupt artifact, audit rollback,
 rate/concurrency, worker budget, restore. Tests không chứng minh triển khai production.
 
@@ -142,7 +142,7 @@ Gold preview **671,6ms**, Gold map **2.490,8ms**, không lỗi. Đây là sample
 ngắn, chưa phải sustained load/capacity hoặc SLA production; script tự xóa users/grants
 tạm sau khi chạy và không đổi dữ liệu USDM.
 
-Phần cần nghiệm thu tiếp: IdP tổ chức/TLS/reverse proxy/container packaging, sustained
+Phần cần nghiệm thu tiếp: TLS/reverse proxy/container packaging, sustained
 load/SLO trên hạ tầng đích, hủy download giữa chừng qua proxy, bảo mật deployment, user UAT.
 Không chạy real MinIO trong Stage 4; repo không dùng CI/CD. Gate MinIO Stage 2 giữ nguyên.
 Bundle bản đồ còn lớn (~343 KiB gzip toàn JS); cần đo cold-load trên mạng triển khai.
@@ -157,15 +157,14 @@ vào existing API deployment. Cấu hình **OS environment** (PortalConfig khôn
 PORTAL_ENABLED=true
 PORTAL_DEMO=false
 PORTAL_ORIGIN=https://data.example.org
-PORTAL_OIDC_ISSUER=https://idp.example.org/realms/climate
-PORTAL_OIDC_CLIENT_ID=climate-portal
-PORTAL_OIDC_CLIENT_SECRET=<secret qua secret manager nếu IdP yêu cầu>
-PORTAL_BOOTSTRAP_SUBJECT=<subject chính xác của Admin đầu tiên>
+PORTAL_BOOTSTRAP_USERNAME=<username của Admin đầu tiên>
+PORTAL_BOOTSTRAP_PASSWORD=<mật khẩu mạnh, qua secret manager>
 PORTAL_STORAGE_ROOT=/storage/portal
 PORTAL_FRONTEND_ROOT=/app/frontend/dist
 ```
 
-Đăng ký callback `/api/portal/v1/auth/callback` tại IdP. Bootstrap Admin không tự có
-grant đọc dữ liệu. User mới mặc định Viewer không grant. Không dùng API key collector
+Bootstrap Admin được tạo ở lần khởi động đầu tiên nếu chưa tồn tại và không tự có
+grant đọc dữ liệu. Admin tạo user mới và đặt lại mật khẩu qua `POST /admin/users` và
+`PUT /admin/users/{id}/password`. User mới mặc định Viewer không grant. Không dùng API key collector
 trong browser. Serving root/control.sqlite3 phải trên local persistent disk, không S3/NFS.
 Chưa sửa Compose/Dockerfile để tuyên bố production deploy đã nghiệm thu.

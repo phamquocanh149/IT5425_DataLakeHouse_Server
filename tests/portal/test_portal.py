@@ -60,94 +60,86 @@ def test_independent_restore_invalidates_sessions(portal):
             shutil.rmtree(destination)
 
 
-@pytest.mark.parametrize("fault", [None, "nonce", "iss", "aud", "exp", "signature", "malformed"])
-def test_oidc_signed_token_validation(portal, monkeypatch, fault):
-    import jwt
-    from cryptography.hazmat.primitives.asymmetric import rsa
-    from climate_platform.api.portal import auth
+def test_password_login_accepts_and_rejects(portal):
+    from climate_platform.api.portal.store import PortalError
 
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(key.public_key())) | {"kid": "test"}
-    flow = portal["store"].transient(
-        "oauth", "", {"verifier": "verifier", "nonce": "expected", "return_to": "/portal/"}, 300
-    )
-    claims = {
-        "iss": portal["cfg"].oidc_issuer,
-        "aud": portal["cfg"].oidc_client_id,
-        "sub": "signed-user",
-        "nonce": "expected",
-        "iat": int(time.time()),
-        "exp": int(time.time()) + 60,
-    }
-    if fault in {"nonce", "iss", "aud"}:
-        claims[fault] = "wrong"
-    if fault == "exp":
-        claims["exp"] = int(time.time()) - 60
-    signing_key = (
-        rsa.generate_private_key(public_exponent=65537, key_size=2048)
-        if fault == "signature"
-        else key
-    )
-    encoded = (
-        "broken"
-        if fault == "malformed"
-        else jwt.encode(claims, signing_key, algorithm="RS256", headers={"kid": "test"})
-    )
-
-    class Result:
-        def __init__(self, value):
-            self.value = value
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return self.value
-
-    class HTTP:
-        def __init__(self, **kwargs):
-            pass
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            pass
-
-        def post(self, url, data):
-            assert data["code_verifier"] == "verifier"
-            return Result({"id_token": encoded})
-
-        def get(self, url):
-            return Result({"keys": [jwk]})
-
-    monkeypatch.setattr(
-        auth,
-        "oidc_document",
-        lambda cfg: {"token_endpoint": "https://idp/token", "jwks_uri": "https://idp/keys"},
-    )
-    monkeypatch.setattr(auth.httpx, "Client", HTTP)
-    client = portal["client"]
-    client.cookies.set("portal_login", flow)
-    result = client.get(
-        "/api/portal/v1/auth/callback",
-        params={"code": "code", "state": flow},
-        follow_redirects=False,
-    )
-    assert result.status_code == (401 if fault else 303)
-    if fault:
-        assert "portal_session" not in result.cookies
-    else:
-        assert client.get("/api/portal/v1/session").json()["role"] == "Viewer"
-        assert client.get("/api/portal/v1/overview").json()["dataset_count"] == 0
-
-
-def test_oidc_rejects_state_and_missing_admin_user(portal):
-    client = portal["client"]
-    assert client.get("/api/portal/v1/auth/callback?code=x&state=wrong").status_code == 401
-    login(portal, role="Admin")
+    c = portal["client"]
     assert (
-        client.patch(
+        c.post(
+            "/api/portal/v1/auth/login", json={"username": "nobody", "password": "something"}
+        ).status_code
+        == 401
+    )
+    portal["store"].ensure_user("viewer", "secret123", "Viewer One")
+    assert (
+        c.post(
+            "/api/portal/v1/auth/login", json={"username": "viewer", "password": "wrong123"}
+        ).status_code
+        == 401
+    )
+    ok = c.post("/api/portal/v1/auth/login", json={"username": "viewer", "password": "secret123"})
+    assert ok.status_code == 200 and ok.json()["username"] == "viewer"
+    assert ok.json()["csrf_token"] and ok.json()["role"] == "Viewer"
+    assert c.get("/api/portal/v1/session").json()["user_id"] == ok.json()["user_id"]
+    c.cookies.set("portal_session", "forged")
+    assert c.get("/api/portal/v1/session").status_code == 401
+    with pytest.raises(PortalError):
+        portal["store"].authenticate("viewer", "wrong123")
+
+
+def test_disabled_user_cannot_login(portal):
+    portal["store"].ensure_user("blocked", "secret123", "Blocked")
+    with portal["store"].db() as db:
+        db.execute("UPDATE users SET enabled=0 WHERE username='blocked'")
+    assert (
+        portal["client"]
+        .post(
+            "/api/portal/v1/auth/login",
+            json={"username": "blocked", "password": "secret123"},
+        )
+        .status_code
+        == 401
+    )
+
+
+def test_admin_creates_user_resets_password_and_missing_target(portal):
+    from climate_platform.api.portal.store import PortalError
+
+    login(portal, username="admin", role="Admin", layers=())
+    c = portal["client"]
+    created = c.post(
+        "/api/portal/v1/admin/users",
+        json={
+            "username": "newbie",
+            "display_name": "New User",
+            "role": "Viewer",
+            "password": "initial123",
+        },
+    )
+    assert created.status_code == 201 and created.json()["username"] == "newbie"
+    assert (
+        c.post(
+            "/api/portal/v1/admin/users",
+            json={
+                "username": "newbie",
+                "display_name": "Dup",
+                "role": "Viewer",
+                "password": "initial123",
+            },
+        ).status_code
+        == 409
+    )
+    target = created.json()["user_id"]
+    url = f"/api/portal/v1/admin/users/{target}/password"
+    assert c.put(url, json={"password": "changed123"}).status_code == 428
+    assert c.put(url, json={"password": "short"}, headers={"If-Match": "1"}).status_code == 422
+    assert c.put(url, json={"password": "changed123"}, headers={"If-Match": "1"}).status_code == 204
+    with pytest.raises(PortalError):
+        portal["store"].authenticate("newbie", "initial123")
+    token, user = portal["store"].authenticate("newbie", "changed123")
+    assert token and user["username"] == "newbie"
+    assert (
+        c.patch(
             "/api/portal/v1/admin/users/missing",
             json={"role": "Viewer", "enabled": True},
             headers={"If-None-Match": "*"},
@@ -298,7 +290,6 @@ def portal():
             enabled=True,
             demo=True,
             origin="http://127.0.0.1:8010",
-            oidc_issuer="http://127.0.0.1:8010/demo-idp",
             storage_root=root,
         )
         app = FastAPI()
@@ -316,10 +307,11 @@ def portal():
             }
 
 
-def login(p, subject="viewer", layers=("bronze", "silver", "gold"), download=True, role="Viewer"):
-    token, user = p["store"].user_login(p["cfg"].oidc_issuer, subject, subject, "")
-    with p["store"].db() as db:
-        db.execute("UPDATE users SET role=? WHERE user_id=?", (role, user["user_id"]))
+def login(p, username="viewer", layers=("bronze", "silver", "gold"), download=True, role="Viewer"):
+    store = p["store"]
+    user = store.ensure_user(username, "secret123", username)
+    with store.db() as db:
+        db.execute("UPDATE users SET role=?,enabled=1 WHERE user_id=?", (role, user["user_id"]))
         for layer in layers:
             db.execute(
                 "INSERT OR REPLACE INTO grants VALUES (?,?,?,?,1)",
@@ -330,6 +322,7 @@ def login(p, subject="viewer", layers=("bronze", "silver", "gold"), download=Tru
                     json.dumps(["read", "download"] if download else ["read"]),
                 ),
             )
+    token = store.start_session(user["user_id"])
     p["client"].cookies.set("portal_session", token)
     s = p["client"].get("/api/portal/v1/session").json()
     p["client"].headers.update({"Origin": p["cfg"].origin, "X-CSRF-Token": s["csrf_token"]})
@@ -386,7 +379,7 @@ def test_quality_and_lineage_hide_other_layers(portal):
 
 
 def test_admin_not_data_superuser(portal):
-    login(portal, subject="admin", role="Admin", layers=())
+    login(portal, username="admin", role="Admin", layers=())
     assert portal["client"].get("/api/portal/v1/datasets").json()["items"] == []
     assert len(portal["client"].get("/api/portal/v1/admin/datasets").json()["items"]) == 1
 
@@ -395,7 +388,7 @@ def test_selection_user_binding_and_expiry(portal):
     login(portal)
     s = selection(portal).json()
     url = f"/api/portal/v1/selections/{s['selection_id']}/layers/gold/preview"
-    login(portal, subject="other")
+    login(portal, username="other")
     assert portal["client"].get(url).status_code == 404
     login(portal)
     with portal["store"].db() as db:
@@ -531,9 +524,9 @@ def test_map_filters_and_legend_labels(portal):
 
 
 def test_admin_grant_conflict_and_revocation(portal):
-    viewer, _ = login(portal, subject="viewer")
+    viewer, _ = login(portal, username="viewer")
     s = selection(portal).json()
-    login(portal, subject="admin", role="Admin", layers=())
+    login(portal, username="admin", role="Admin", layers=())
     url = f"/api/portal/v1/admin/users/{viewer['user_id']}/grants/{portal['did']}/gold"
     assert portal["client"].put(url, json={"actions": ["read"]}).status_code == 428
     assert (
@@ -547,7 +540,7 @@ def test_admin_grant_conflict_and_revocation(portal):
         == 200
     )
     # New session, same identity; don't reseed grants after revocation.
-    token, _ = portal["store"].user_login(portal["cfg"].oidc_issuer, "viewer", "viewer", "")
+    token = portal["store"].start_session(viewer["user_id"])
     portal["client"].cookies.set("portal_session", token)
     aid = s["layers"]["gold"]["artifacts"][0]["artifact_id"]
     assert (
@@ -560,7 +553,7 @@ def test_admin_grant_conflict_and_revocation(portal):
 
 def test_atomic_grant_and_audit_failure(portal):
     user, _ = login(portal)
-    login(portal, subject="admin", role="Admin", layers=())
+    login(portal, username="admin", role="Admin", layers=())
     with portal["store"].db() as db:
         db.execute(
             "CREATE TRIGGER fail_audit BEFORE INSERT ON audit WHEN NEW.action='grant_updated' BEGIN SELECT RAISE(ABORT,'fault'); END"

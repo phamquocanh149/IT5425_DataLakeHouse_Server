@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import json
 import secrets
@@ -5,9 +6,34 @@ import sqlite3
 import time
 from contextlib import contextmanager
 
+PBKDF2_ITERATIONS = 200_000
+
 
 def token_hash(value):
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def hash_password(password):
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, PBKDF2_ITERATIONS)
+    return "pbkdf2_sha256${}${}${}".format(
+        PBKDF2_ITERATIONS,
+        base64.b64encode(salt).decode(),
+        base64.b64encode(digest).decode(),
+    )
+
+
+def verify_password(password, stored):
+    try:
+        algorithm, iterations, salt, digest = stored.split("$")
+        if algorithm != "pbkdf2_sha256":
+            return False
+        computed = hashlib.pbkdf2_hmac(
+            "sha256", password.encode(), base64.b64decode(salt), int(iterations)
+        )
+        return secrets.compare_digest(computed, base64.b64decode(digest))
+    except (AttributeError, ValueError, TypeError):
+        return False
 
 
 class PortalError(Exception):
@@ -27,9 +53,9 @@ class Store:
             db.executescript("""
                 PRAGMA journal_mode=WAL;
                 CREATE TABLE IF NOT EXISTS users (
-                    user_id TEXT PRIMARY KEY, issuer TEXT NOT NULL, subject TEXT NOT NULL,
+                    user_id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE,
                     display_name TEXT NOT NULL, role TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
-                    version INTEGER NOT NULL DEFAULT 1, UNIQUE(issuer,subject));
+                    version INTEGER NOT NULL DEFAULT 1, password_hash TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS grants (
                     user_id TEXT NOT NULL REFERENCES users(user_id), dataset_id TEXT NOT NULL,
                     layer TEXT NOT NULL, actions TEXT NOT NULL, version INTEGER NOT NULL,
@@ -106,31 +132,62 @@ class Store:
                 db.execute("DELETE FROM transient WHERE token=?", (token_hash(token),))
             return json.loads(row["data"])
 
-    def user_login(self, issuer, subject, name, bootstrap):
+    def create_user(self, username, password, display_name, role="Viewer", enabled=True):
         with self.db() as db:
             db.execute("BEGIN IMMEDIATE")
-            row = db.execute(
-                "SELECT * FROM users WHERE issuer=? AND subject=?", (issuer, subject)
-            ).fetchone()
+            row = db.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
+            if row is not None:
+                raise PortalError(409, "USER_EXISTS")
+            user = self._insert_user(db, username, password, display_name, role, enabled)
+        return user
+
+    def ensure_user(self, username, password, display_name, role="Viewer", enabled=True):
+        with self.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
+            if row is not None:
+                return dict(row)
+            return self._insert_user(db, username, password, display_name, role, enabled)
+
+    def _insert_user(self, db, username, password, display_name, role, enabled):
+        uid = "u_" + secrets.token_hex(12)
+        db.execute(
+            "INSERT INTO users(user_id,username,display_name,role,enabled,password_hash)"
+            " VALUES (?,?,?,?,?,?)",
+            (uid, username, display_name[:120], role, int(enabled), hash_password(password)),
+        )
+        self.audit(db, uid, "account_created", uid)
+        return dict(db.execute("SELECT * FROM users WHERE user_id=?", (uid,)).fetchone())
+
+    def ensure_bootstrap(self, username, password):
+        if not username or not password:
+            return
+        with self.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
             if row is None:
-                uid = "u_" + secrets.token_hex(12)
-                role = "Admin" if subject == bootstrap else "Viewer"
-                db.execute(
-                    "INSERT INTO users(user_id,issuer,subject,display_name,role) VALUES (?,?,?,?,?)",
-                    (uid, issuer, subject, name[:120], role),
-                )
-                self.audit(db, uid, "account_created", uid)
-                row = db.execute("SELECT * FROM users WHERE user_id=?", (uid,)).fetchone()
-            if not row["enabled"]:
+                self._insert_user(db, username, password, username, "Admin", True)
+
+    def authenticate(self, username, password):
+        with self.db() as db:
+            row = db.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
+        user = dict(row) if row is not None else None
+        if not user or not user["enabled"] or not verify_password(password, user["password_hash"]):
+            raise PortalError(401, "INVALID_CREDENTIALS")
+        return self.start_session(user["user_id"]), user
+
+    def start_session(self, user_id):
+        token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
+        with self.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if not db.execute("SELECT user_id FROM users WHERE user_id=?", (user_id,)).fetchone():
                 raise PortalError(401, "SESSION_REQUIRED")
-            user = dict(row)
-            token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
             db.execute(
                 "INSERT INTO sessions VALUES (?,?,?,?,?)",
-                (token_hash(token), user["user_id"], csrf, time.time(), time.time()),
+                (token_hash(token), user_id, csrf, time.time(), time.time()),
             )
-            self.audit(db, user["user_id"], "login", user["user_id"])
-        return token, user
+            self.audit(db, user_id, "login", user_id)
+        return token
 
     def session(self, token, config):
         if not token:

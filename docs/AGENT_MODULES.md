@@ -32,12 +32,12 @@ Phase 1 trong [../AGENT.md](../AGENT.md).
 ## Stage 4 — Data Portal: Implemented local, Pending UAT
 
 Ngày 2026-11-22: Mốc A đã được người dùng duyệt, Mốc B đã triển khai và demo bằng
-USDM Stage 3. Người dùng chọn IdP demo localhost. Xem
+USDM Stage 3. Demo dùng tài khoản/mật khẩu cục bộ. Xem
 [runbook/kết quả](../docs/STAGE4_IMPLEMENTATION.md), [API](../docs/STAGE4_API_CONTRACT.md),
 [Checklist](../docs/STAGE4_ACCEPTANCE.md). **Chưa đánh dấu Completed; chờ UAT.**
 
 Implementation: `portal/` mở rộng FastAPI qua `install_portal`, opt-in
-`PORTAL_ENABLED` trong main; React/TypeScript ở `../frontend-climate-platform/`; OIDC session,
+`PORTAL_ENABLED` trong main; React/TypeScript ở `../frontend-climate-platform/`; username/password session,
 Viewer/Operator/Admin và grants dataset/layer/action kiểm tra mỗi request.
 `data_lake/portal/releases/usdm-stage3-v1` riêng ngoài `.test-runs`, current/history
 pin xuyên preview/download. 130 current tuần, 131 historical builds, 423.670 Gold rows.
@@ -46,7 +46,7 @@ pin xuyên preview/download. 130 current tuần, 131 historical builds, 423.670 
 Giữ ingestion/auth collector/ownership và schema Stage 1–3. Chỉ xem/tải dữ liệu;
 không upload UI, pipeline/collector control, SQL tự do hay Silver/Gold MinIO.
 API/security, browser E2E và hồi quy đã chạy local; restore thật sang root độc lập
-đã verify. Không đồng nghĩa production IdP/TLS, load SLO hoặc MinIO đã nghiệm thu.
+đã verify. Không đồng nghĩa production TLS, load SLO hoặc MinIO đã nghiệm thu.
 Scripts: `scripts/portal/prepare_portal.py`, `scripts/portal/run_portal_demo.py`,
 `scripts/backup/portal_backup.py`;
 tests: `tests/portal/test_portal.py`, `../frontend-climate-platform/tests/portal.spec.ts`.
@@ -69,9 +69,9 @@ ownership, revision semantics hoặc dependency runtime của FastAPI.
 - Gold dùng tọa độ grid/lon/lat từ CSV tham chiếu, không dùng nhãn drought làm
   đầu vào. Point-in-polygon `within`, lấy max DM khi chồng lấn; ngoài đa giác
   là `0`, phân biệt với `D0`. Đây là mart centroid, không phải diện tích hạn hán.
-- `scripts/usdm/run_usdm.py`: CLI offline có quyền của operator, không phải API collector.
-  Owner cố định `usdm-replay`, dataset key `usdm/gis/CONUS/M/weekly`.
-- `scripts/usdm/verify_usdm.py`: kiểm tra source/output hashes và đối chiếu Gold,
+- `scripts/process_data/usdm/run_usdm.py`: CLI offline có quyền của operator, không phải API
+  collector. Owner cố định `usdm-replay`, dataset key `usdm/gis/CONUS/M/weekly`.
+- `scripts/process_data/usdm/verify_usdm.py`: kiểm tra source/output hashes và đối chiếu Gold,
   chỉ chọn build mới nhất của observation VERIFIED/current theo registry.
 
 ## Lưu trữ và retry

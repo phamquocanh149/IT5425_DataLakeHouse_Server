@@ -5,11 +5,11 @@ from contextlib import closing
 from datetime import date
 
 from fastapi import APIRouter, Request
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from starlette.responses import StreamingResponse
 
 from .releases import Release, contained
-from .store import PortalError
+from .store import PortalError, hash_password
 from .reader import bounded_read
 
 LAYERS = ("bronze", "silver", "gold")
@@ -33,6 +33,22 @@ class UserInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     role: str
     enabled: bool
+
+
+class CreateUserInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    username: str = Field(min_length=3, max_length=64, pattern=r"^[a-z0-9._-]+$")
+    display_name: str = Field(min_length=1, max_length=120)
+    role: str
+    password: str = Field(min_length=8, max_length=256)
+
+
+class PasswordInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    password: str = Field(min_length=8, max_length=256)
+
+
+ROLES = {"Viewer", "Operator", "Admin"}
 
 
 def api_router(config, store):
@@ -709,11 +725,60 @@ def api_router(config, store):
             rows = [
                 dict(r)
                 for r in db.execute(
-                    "SELECT user_id,display_name,role,enabled,version FROM users ORDER BY user_id"
+                    "SELECT user_id,username,display_name,role,enabled,version FROM users"
+                    " ORDER BY user_id"
                 )
             ]
         q = request.query_params.get("q", "").lower()
-        return paginate(request, [r for r in rows if q in r["display_name"].lower()], "admin")
+        return paginate(
+            request,
+            [r for r in rows if q in r["display_name"].lower() or q in r["username"].lower()],
+            "admin",
+        )
+
+    @router.post("/admin/users", status_code=201)
+    def create_user(request: Request, body: CreateUserInput):
+        admin(request)
+        if body.role not in ROLES:
+            raise PortalError(422, "INVALID_FILTER")
+        user = store.create_user(body.username, body.password, body.display_name, body.role)
+        with store.db() as db:
+            store.audit(
+                db,
+                uid(request),
+                "create_user",
+                user["user_id"],
+                request_id=request.state.request_id,
+            )
+        return {
+            "user_id": user["user_id"],
+            "username": user["username"],
+            "display_name": user["display_name"],
+            "role": user["role"],
+            "enabled": bool(user["enabled"]),
+            "version": user["version"],
+        }
+
+    @router.put("/admin/users/{target}/password", status_code=204)
+    def set_password(request: Request, target: str, body: PasswordInput):
+        admin(request)
+        with store.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT * FROM users WHERE user_id=?", (target,)).fetchone()
+            if row is None:
+                raise PortalError(404, "RESOURCE_NOT_FOUND")
+            precondition(request, row)
+            db.execute(
+                "UPDATE users SET password_hash=?,version=version+1 WHERE user_id=?",
+                (hash_password(body.password), target),
+            )
+            store.audit(
+                db,
+                uid(request),
+                "password_reset",
+                target,
+                request_id=request.state.request_id,
+            )
 
     @router.get("/admin/datasets")
     def admin_datasets(request: Request):
@@ -735,7 +800,7 @@ def api_router(config, store):
     @router.patch("/admin/users/{target}")
     def update_user(request: Request, target: str, body: UserInput):
         admin(request)
-        if target == uid(request) or body.role not in {"Viewer", "Operator", "Admin"}:
+        if target == uid(request) or body.role not in ROLES:
             raise PortalError(403, "ACTION_FORBIDDEN")
         with store.db() as db:
             db.execute("BEGIN IMMEDIATE")
@@ -752,7 +817,8 @@ def api_router(config, store):
             )
             return dict(
                 db.execute(
-                    "SELECT user_id,display_name,role,enabled,version FROM users WHERE user_id=?",
+                    "SELECT user_id,username,display_name,role,enabled,version FROM users"
+                    " WHERE user_id=?",
                     (target,),
                 ).fetchone()
             )

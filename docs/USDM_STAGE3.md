@@ -55,14 +55,14 @@ Ví dụ chạy cô lập, không đụng registry production:
 $env:DEBUG = 'False'
 $env:STORAGE_BACKEND = 'local'
 $env:BASE_DIR = (Join-Path (Get-Location) '.test-runs/usdm-stage3')
-.venv/Scripts/python.exe scripts/usdm/run_usdm.py `
+.venv/Scripts/python.exe scripts/process_data/usdm/run_usdm.py `
   --source-root 'D:/Trực quan hóa/data_crawl_USDM' `
   --output-root '.test-runs/usdm-stage3/products' `
   --gis-python 'E:/anaconda/python.exe'
 # Có thể giới hạn bằng --start-date 2020-01-07 --end-date 2020-01-07.
 # Chạy lại cùng lệnh để kiểm tra replay; CLI exit 1 nếu có tuần lỗi.
 
-.venv/Scripts/python.exe scripts/usdm/verify_usdm.py `
+.venv/Scripts/python.exe scripts/process_data/usdm/verify_usdm.py `
   --source-root 'D:/Trực quan hóa/data_crawl_USDM' `
   --output-root '.test-runs/usdm-stage3/products' `
   --registry '.test-runs/usdm-stage3/metadata/ingestion.sqlite3'

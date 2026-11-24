@@ -23,8 +23,8 @@ from datetime import datetime, time, timedelta
 from pathlib import Path
 
 HERE = Path(__file__).resolve()
-SERVER_ROOT = HERE.parents[2]
-WORKSPACE = HERE.parents[3]
+SERVER_ROOT = HERE.parents[3]
+WORKSPACE = HERE.parents[4]
 DUY_ROOT = WORKSPACE / "duy-nldas-script"
 
 PRODUCTS = ("FORA", "NOAH")

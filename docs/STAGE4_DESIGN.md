@@ -19,7 +19,7 @@ wireframe hoặc kết quả test Stage 3 không đồng nghĩa Portal đã ho�
 Đề nghị duyệt các lựa chọn v1:
 
 1. Portal đọc dữ liệu, không upload/điều khiển pipeline/collector hoặc SQL tự do.
-2. Login OIDC qua nhà cung cấp danh tính cấu hình ở deployment; session tại FastAPI.
+2. Login bằng tài khoản/mật khẩu cục bộ (PBKDF2) do quản trị viên tạo; session tại FastAPI.
 3. Quyền theo dataset và layer; Admin quản lý quyền nhưng không tự có quyền đọc mọi dữ liệu.
 4. Bronze xem metadata/danh sách file trong package và tải ZIP; Silver xem bảng/polygon;
    Gold xem bảng/điểm tâm grid. Bản đồ không tự diễn giải số ô thành diện tích hạn hán.
@@ -28,9 +28,9 @@ wireframe hoặc kết quả test Stage 3 không đồng nghĩa Portal đã ho�
 6. Download nguyên sản phẩm theo tuần/phiên bản; export kết quả lọc hoặc nhiều tuần
    thành file mới nằm ngoài Stage 4.
 
-Issuer/client OIDC, tên miền TLS và đường dẫn persistent storage thực tế là thông số
+Tài khoản bootstrap Admin, tên miền TLS và đường dẫn persistent storage thực tế là thông số
 triển khai phải được cung cấp trước nghiệm thu B; không tự tạo credentials trong A.
-Không thêm màn hình đăng ký/reset mật khẩu: do Identity Provider phụ trách.
+Không có màn hình tự đăng ký: Admin tạo user và đặt lại mật khẩu qua API quản trị.
 
 ## 2. Kiến trúc hiện tại và phần thiếu
 
@@ -90,7 +90,7 @@ onboard không hiện nút thao tác giả. Ngoài USDM, nhãn partition có th�
 
 ## 4. Vai trò và permission matrix
 
-Danh tính Portal là `(OIDC issuer, subject)` ổn định, không dùng email làm khóa owner.
+Danh tính Portal là `username` ổn định (duy nhất), không dùng email làm khóa owner.
 Vai trò ứng dụng lưu phía Server, không nhận role từ payload người dùng.
 Một user có một role Viewer/Operator/Admin. Operator và Admin có capability xem
 vận hành; quyền dữ liệu vẫn phải được grant rõ ràng.
@@ -132,8 +132,8 @@ Object thấy được nhưng thiếu quyền download trả 403. Backend không
 
 ## 5. Login/session
 
-OIDC Authorization Code + PKCE; backend kiểm tra issuer/audience/signature/nonce/state
-và exact redirect URI. Nút Login chuyển sang IdP; token không lưu trong localStorage.
+Đăng nhập bằng username/password; backend lưu PBKDF2-HMAC-SHA256 (salt riêng mỗi user) và
+so khớp hằng thời gian. Form Login gửi JSON tới `/auth/login`; mật khẩu không lưu ở JS.
 Session opaque tại Server, cookie `HttpOnly`, `Secure`, `SameSite=Lax`, Path `/`;
 rotate session khi đăng nhập. Idle 30 phút, absolute 8 giờ là mặc định đề xuất.
 POST/PUT/PATCH/DELETE yêu cầu CSRF token và kiểm tra Origin, gồm logout và grants.
@@ -141,7 +141,7 @@ Các giới hạn này là quyết định thiết kế, không phải config đ
 
 Role/grants được kiểm tra từ control store mỗi request; revoke có hiệu lực với request
 kế tiếp, không chờ token hết hạn. Stream đang mở không thể thu hồi bytes đã gửi;
-download mới phải kiểm tra lại. Disabled user/session hết hạn trả 401. IdP lỗi không
+download mới phải kiểm tra lại. Disabled user/session hết hạn trả 401. Sai credentials không
 fallback sang API key. API key collector/admin hiện hữu không đăng nhập Portal.
 Đề xuất cookie/session theo [OWASP Session Management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html).
 

@@ -50,7 +50,7 @@ Stage 1–4 là bằng chứng lịch sử; kiểm tra Stage 5 ghi riêng trong 
 ## Gate đang mở (không tự đóng)
 
 - Stage 2: real MinIO restore drill/benchmark, scheduler backup, off-host.
-- Stage 4: UAT, IdP tổ chức/TLS, sustained load, process-kill drill.
+- Stage 4: UAT, TLS, sustained load, process-kill drill.
 - Stage 5: pristine deploy từ repo sạch, MinIO/Docker gate, off-host, service RPO/RTO.
 
 ## Nguồn chuẩn liên quan

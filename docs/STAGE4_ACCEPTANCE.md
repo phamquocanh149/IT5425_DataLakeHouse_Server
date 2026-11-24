@@ -16,7 +16,7 @@ Tham chiếu [Design](STAGE4_DESIGN.md), [Wireframes](STAGE4_WIREFRAMES.md),
 - [x] A06: Storage serving tách `.test-runs`, checkpoint copy/verify/publish, bảo toàn ID.
 - [x] A07: Loading/empty/error/revoked/expired; pagination, map và download bounds.
 - [x] A08: Checklist B và tiêu chí không phá Stage 1–3; cập nhật AGENT đúng scope.
-- [x] A09 — **Người dùng đã duyệt Mốc A, yêu cầu triển khai B và chọn IdP demo localhost.**
+- [x] A09 — **Người dùng đã duyệt Mốc A, yêu cầu triển khai B và chọn tài khoản demo localhost.**
 
 **Gate A đã đạt.** B được triển khai trong scope đã duyệt. Các khác biệt giữa thiết kế
 và implementation được ghi ở đầu API contract và runbook; không coi là nghiệm thu production.
@@ -25,7 +25,7 @@ và implementation được ghi ở đầu API contract và runbook; không coi 
 
 | ID | Tiêu chí nghiệm thu | Bằng chứng phải có | Trạng thái |
 |---|---|---|---|
-| B01 | Login/logout, expiry/disabled user; cookie/CSRF; không API key trong browser | Auth unit/integration + OIDC test IdP và deployment cấu hình thật | PASS local OIDC/JWT/cookie/CSRF; production IdP/TLS pending |
+| B01 | Login/logout, expiry/disabled user; cookie/CSRF; không API key trong browser | Auth unit/integration username/password và deployment cấu hình thật | PASS local password/PBKDF2/cookie/CSRF; production TLS pending |
 | B02 | Không grant → không thấy dataset/count; layer grant độc lập; Admin không bypass read | Ma trận tests ba roles × read/download × layers | PASS API policy + restricted Viewer E2E |
 | B03 | Đoán dataset/file/build/artifact/selection ID hoặc sửa cursor không vượt quyền | API negative tests, user A dùng selection user B, path/symlink traversal | PASS API selection/cursor/path checks; symlink OS drill pending |
 | B04 | Revoke có hiệu lực request kế tiếp; grant update/audit atomic; conflict không ghi đè | API concurrency/rollback tests; 403 download hoặc 404 read | PASS revoke, If-Match, audit rollback API tests |
@@ -45,7 +45,7 @@ và implementation được ghi ở đầu API contract và runbook; không coi 
 | B18 | Release staging không bị đọc; active pointer atomic, rollback và restore độc lập | Interrupt publish + restore control/release vào root khác rồi verify | PASS independent restore and release-switch tests; process-kill publish drill pending |
 | B19 | Loading/empty/error/expired/history; keyboard, labels, responsive, no stale week display | UI component/E2E + walkthrough bốn màn hình bằng browser | PASS 4 browser E2E including mobile/loading/empty/error/expiry; user accessibility UAT pending |
 | B20 | Không regression Stage 1–3 và Client contract | Full Server tests có GIS; Client tests + HTTP integration; Ruff và frontend checks | PASS Server 111 + Client 59 + GIS + Ruff + frontend build |
-| B21 | Build frontend/Server tái lập; OIDC/domain/storage cấu hình, không credentials trong artifacts | Clean build/deploy + smoke; ghi environment/version/report | PARTIAL: local build/IdP demo PASS; clean production deploy pending |
+| B21 | Build frontend/Server tái lập; domain/storage cấu hình, không credentials trong artifacts | Clean build/deploy + smoke; ghi environment/version/report | PARTIAL: local build/demo accounts PASS; clean production deploy pending |
 | B22 | Docs/AGENT/README cập nhật và user nghiệm thu flow xuyên ba tầng | Report command/date/results, artifact paths, limitations, approval | Docs updated; user UAT PENDING |
 
 Mọi count baseline chỉ áp dụng checkpoint Stage 3 đã xác minh; release khác phải có

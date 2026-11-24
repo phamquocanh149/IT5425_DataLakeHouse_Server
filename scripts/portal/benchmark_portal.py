@@ -34,9 +34,10 @@ def main():
     clients = []
     try:
         for _ in range(10):
-            token, user = store.user_login(
-                "local-benchmark", uuid.uuid4().hex, "Temporary benchmark", ""
+            user = store.ensure_user(
+                "bench-" + uuid.uuid4().hex, uuid.uuid4().hex, "Temporary benchmark"
             )
+            token = store.start_session(user["user_id"])
             users.append(user["user_id"])
             with store.db() as db:
                 db.execute(
