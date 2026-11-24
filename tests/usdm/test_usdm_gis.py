@@ -1,4 +1,11 @@
-"""Opt-in real GIS worker tests; API environment does not require GIS libraries."""
+"""Real GIS worker tests: auto-discovered interpreter, ``USDM_GIS_PYTHON`` to override.
+
+A GIS interpreter is searched for by default (env override, then a conventional ``.venv-gis``)
+so the end-to-end drought-classification suite actually runs wherever the GIS stack exists
+instead of silently skipping. The classification contract itself is also guarded by
+``test_drought_classification`` which runs without any GIS stack. Set ``REQUIRE_GIS_TESTS=1``
+to turn a missing GIS environment into a hard failure (the release gate relies on this).
+"""
 
 import os
 import subprocess
@@ -6,21 +13,36 @@ from pathlib import Path
 
 import pytest
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
+
+def gis_python():
+    """Return a GIS interpreter if one is configured or discoverable, else ``None``."""
+    override = os.environ.get("USDM_GIS_PYTHON")
+    if override:
+        return override
+    for venv in (REPO_ROOT / ".venv-gis", REPO_ROOT / "venv-gis", REPO_ROOT / ".gis"):
+        for relative in ("bin/python", "bin/python3", "Scripts/python.exe"):
+            candidate = venv / relative
+            if candidate.exists():
+                return str(candidate)
+    return None
+
+
+@pytest.mark.gis
 @pytest.mark.parametrize("case", ["overlap", "repair", "fractional", "out_of_range", "missing_crs"])
 def test_real_gis_quality_gates(tmp_path, case):
-    python = os.environ.get("USDM_GIS_PYTHON")
+    python = gis_python()
     source = os.environ.get("USDM_SOURCE_ROOT")
     cleaner = (
         Path(source) / "silver/scripts/usdm_bronze_to_silver.py"
         if source
-        else Path(__file__).resolve().parents[2]
-        / "src/climate_platform/datasets/usdm/resources/usdm_bronze_to_silver.py"
+        else REPO_ROOT / "src/climate_platform/datasets/usdm/resources/usdm_bronze_to_silver.py"
     )
     if not python:
         if os.environ.get("REQUIRE_GIS_TESTS") == "1":
-            pytest.fail("Required GIS environment missing: USDM_GIS_PYTHON")
-        pytest.skip("Set USDM_GIS_PYTHON for real GIS tests")
+            pytest.fail("Required GIS environment missing: set USDM_GIS_PYTHON or create .venv-gis")
+        pytest.skip("No GIS interpreter: set USDM_GIS_PYTHON or create .venv-gis")
     assert cleaner.is_file(), "Required cleaner missing"
     code = r"""
 import sys
@@ -59,7 +81,7 @@ else:
 """
     result = subprocess.run(
         [python, "-c", code, str(tmp_path), str(cleaner), case],
-        cwd=str(Path(__file__).resolve().parents[2] / "src"),
+        cwd=str(REPO_ROOT / "src"),
         capture_output=True,
         timeout=60,
     )

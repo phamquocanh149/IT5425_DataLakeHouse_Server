@@ -6,9 +6,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
-from climate_platform.api.portal.releases import (  # noqa: E402
+from climate_platform.modules.portal.services.publish import prepare_release  # noqa: E402
+from climate_platform.repositories.releases import (  # noqa: E402
     activate,
-    prepare_release,
     verify_release,
 )
 

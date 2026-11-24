@@ -65,25 +65,29 @@ upload. Do not send credentials to port 80 or trust arbitrary forwarded headers.
 
 ## Images, scan and SBOM
 
-Compose no longer accepts the personal Docker Hub image overrides. It requires
-`MINIO_DIGEST=sha256:...` and `MINIO_MC_DIGEST=sha256:...` and constructs only
-`quay.io/minio/minio@...` and `quay.io/minio/mc@...`. Obtain digests from a trusted
-publisher manifest/release, review provenance, then run
-`python scripts/release/verify_images.py --api-image <tested-api-image> --worker-image <tested-worker-image>` with Docker and Trivy installed. It pulls from
-the official namespace, writes CycloneDX SBOMs and JSON vulnerability reports,
-and fails on HIGH/CRITICAL findings. Retain `security-artifacts/` with release
-evidence. Run the same gate locally with MINIO_DIGEST and MINIO_MC_DIGEST set before
-the Compose smoke; this project has no CI/CD pipeline. Registry origin plus digest is not a publisher cryptographic signature;
-do not claim signed provenance without a verified publisher attestation.
+Compose runs this project's own source-built MinIO images:
+`noname12346767/my-minio` (server) and `noname12346767/mc-allos` (client). Set
+`MINIO_IMAGE=<repo>@sha256:...` and `MINIO_MC_IMAGE=<repo>@sha256:...` to the exact
+digest-pinned references you built and published, so the release gate verifies the
+same image the deployment runs. Do not substitute an upstream publisher's image
+(`quay.io/minio/*`, `minio/*`); that is a different product and is not what this
+project ships. The gate fails closed when a reference is missing or is not pinned
+to a `sha256:` digest.
 
-As of this remediation, anonymous Quay manifest/token requests returned 401 and
-the upstream repository states community distribution is source-only and no longer
-maintained: https://github.com/minio/minio. No unverifiable digest is provided.
-Deployment intentionally fails closed until verified official artifacts are
-available. Do not reuse a third-party digest under the official namespace.
-If official artifacts cannot be obtained, evaluate a supported distribution or a
-reviewed build from pinned official source with its own provenance; this requires
-a deployment decision rather than an untested automatic storage replacement.
+Run
+`python scripts/release/verify_images.py --api-image <tested-api-image> --worker-image <tested-worker-image>`
+with Docker and Trivy installed. It resolves the exact `MINIO_IMAGE`/`MINIO_MC_IMAGE`
+references (local image first, otherwise that pinned pull), writes CycloneDX SBOMs and
+JSON vulnerability reports, and fails on HIGH/CRITICAL findings. Retain
+`security-artifacts/` with release evidence. Run the same gate locally before the
+Compose smoke; this project has no CI/CD pipeline. Registry origin plus digest is not a
+publisher cryptographic signature; do not claim signed provenance without a verified
+publisher attestation.
+
+The gate only verifies the images it is given, so Compose must resolve the same
+references. Compose reads `MINIO_IMAGE`/`MINIO_MC_IMAGE`; when both are set to the
+pinned references above, the images that run and the images the gate scans are
+identical. The default tags exist for local development only and do not pass the gate.
 Existing running containers/data volumes are not modified by these code changes.
 
 ## Optional audit storage controls

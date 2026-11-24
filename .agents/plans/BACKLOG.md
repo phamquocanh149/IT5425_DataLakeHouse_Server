@@ -22,7 +22,7 @@ Chi tiết bằng chứng xem [STAGE_5_CHECKPOINT.md](STAGE_5_CHECKPOINT.md) m�
 | ID | Vấn đề có căn cứ | Tiếp theo / trạng thái |
 |---|---|---|
 | S5.08 | `historical_recipes/` không tồn tại nhưng khai báo trong package-data (extra `portal`/`cryptography` đã bỏ khi chuyển sang password auth) | NEEDS VERIFICATION — clean `pip install`/`build`/`pip check` |
-| S5.09 | Compose cần `MINIO_DIGEST`/`MINIO_MC_DIGEST` và artifacts; repo sạch không tự dựng | NEEDS VERIFICATION — template biến nền trường, image pin từ artifacts |
+| S5.09 | Compose cần `MINIO_IMAGE`/`MINIO_MC_IMAGE` (image MinIO tự build, pin digest) và artifacts; repo sạch không tự dựng | NEEDS VERIFICATION — template biến nền trường, image pin từ artifacts |
 | S5.10 | Import `pyproj.crs`/`transformer` lệch pin `pyproj==3.8.0` | NEEDS VERIFICATION — chạy GIS smoke với pin đúng |
 | S5.11 | Chưa chốt đường cài canonical giữa `pyproject.toml` và `requirements*.txt` cho môi trường local | TODO |
 
@@ -30,7 +30,7 @@ Chi tiết bằng chứng xem [STAGE_5_CHECKPOINT.md](STAGE_5_CHECKPOINT.md) m�
 
 | ID | Mục tiêu dự kiến | Dependency / trạng thái |
 |---|---|---|
-| BL.N1 | Pipeline khoa học NOAA/USGS/NLDAS (mở rộng S3.04) | Kế thừa Stage 3 identity/revision; TODO |
+| BL.N1 | Pipeline khoa học NOAA/USGS/NLDAS (mở rộng S3.04) | NOAA/USGS: auto-runner + processor đăng ký (xem S3.04, 2026-11-24); NLDAS processor còn TODO |
 | BL.N2 | Silver/Gold trên S3 thay vì chỉ local | Gắn với S3.08 / Stage 5 MinIO gate; TODO |
 | BL.N3 | DuckDB/dbt, streaming broker/orchestrator đa nguồn | Không thêm chỉ để khớp tên dự án; cần scope+acceptance; TODO |
 

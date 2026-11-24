@@ -1,37 +1,23 @@
 """MinIO/S3 object repository. ETags and user metadata are never checksum evidence.
 
-The boto3 client lives here: the repository is the single place that talks to MinIO,
-so there is no separate driver layer.
+This repository is the single place that talks to MinIO; the boto3 client itself is built
+by the shared factory in ``s3.client`` so the readiness probe reuses the same config.
 """
 
 import base64
 import hashlib
 from pathlib import Path
 
-import boto3
-from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from climate_platform.config import settings
+from climate_platform.s3.client import s3_client
 
 
 class S3Storage:
     def __init__(self):
         self.bucket = settings.S3_BUCKET_BRONZE
-        self.client = boto3.client(
-            "s3",
-            endpoint_url=settings.S3_ENDPOINT,
-            region_name=settings.S3_REGION,
-            aws_access_key_id=settings.S3_ACCESS_KEY,
-            aws_secret_access_key=settings.S3_SECRET_KEY,
-            config=Config(
-                signature_version="s3v4",
-                connect_timeout=3,
-                read_timeout=10,
-                retries={"mode": "standard", "total_max_attempts": 3},
-                s3={"addressing_style": "path"},
-            ),
-        )
+        self.client = s3_client(signature_version="s3v4")
 
     def verify(self, key, sha256, size, bucket=None):
         response = self.client.get_object(Bucket=bucket or self.bucket, Key=key)

@@ -13,8 +13,8 @@ from urllib.parse import urlparse
 import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
-from climate_platform.api.portal.releases import Release
-from climate_platform.api.portal.store import Store
+from climate_platform.repositories.releases import Release
+from climate_platform.repositories.control_repository import Store
 
 
 def main():
@@ -26,7 +26,7 @@ def main():
         raise ValueError("Only loopback benchmarks are allowed")
     store = Store(args.root.resolve())
     with store.db() as db:
-        rid = db.execute("SELECT value FROM config WHERE key='active_release'").fetchone()[0]
+        rid = db.execute("SELECT value FROM config WHERE key='active_release'").fetchone()["value"]
     rel = Release(args.root.resolve(), rid)
     did = next(iter(rel.catalog["datasets"]))
     week = max(o["source_date"] for o in rel.observations(did))

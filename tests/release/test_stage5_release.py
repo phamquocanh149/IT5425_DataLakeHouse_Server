@@ -25,19 +25,27 @@ def test_scan_exact_api_worker_and_storage_images(tmp_path, monkeypatch):
         "sys.argv",
         ["verify_images", "--api-image", "api:release", "--worker-image", "worker:release"],
     )
-    monkeypatch.setenv("MINIO_DIGEST", "sha256:" + "a" * 64)
-    monkeypatch.setenv("MINIO_MC_DIGEST", "sha256:" + "b" * 64)
+    minio_image = "noname12346767/my-minio@sha256:" + "a" * 64
+    mc_image = "noname12346767/mc-allos@sha256:" + "b" * 64
+    monkeypatch.setenv("MINIO_IMAGE", minio_image)
+    monkeypatch.setenv("MINIO_MC_IMAGE", mc_image)
     calls = []
 
     def run(command, **kwargs):
         calls.append(command)
-        return SimpleNamespace(stdout="sha256:" + "c" * 64)
+        return SimpleNamespace(stdout="sha256:" + "c" * 64, returncode=0)
 
     monkeypatch.setattr(verify_images.subprocess, "run", run)
     verify_images.main()
     evidence = json.loads((tmp_path / "security-artifacts/verified-images.json").read_text())
     assert len(evidence) == 4
-    assert {item["image"] for item in evidence} >= {"api:release", "worker:release"}
+    assert {item["image"] for item in evidence} == {
+        minio_image,
+        mc_image,
+        "api:release",
+        "worker:release",
+    }
+    assert all(item["origin"] == "source-build" for item in evidence[:2])
     scans = [c for c in calls if c[:2] == ["trivy", "image"]]
     assert len(scans) == 8
     assert all(c[-1] == "sha256:" + "c" * 64 for c in scans)
@@ -48,6 +56,19 @@ def test_scan_exact_api_worker_and_storage_images(tmp_path, monkeypatch):
 
     monkeypatch.setattr(verify_images.subprocess, "run", fail)
     with pytest.raises(RuntimeError):
+        verify_images.main()
+    assert not (tmp_path / "security-artifacts/verified-images.json").exists()
+
+
+def test_release_gate_rejects_unpinned_storage_image(tmp_path, monkeypatch):
+    monkeypatch.setattr(verify_images, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["verify_images", "--api-image", "api:release", "--worker-image", "worker:release"],
+    )
+    monkeypatch.setenv("MINIO_IMAGE", "noname12346767/my-minio:latest")
+    monkeypatch.setenv("MINIO_MC_IMAGE", "noname12346767/mc-allos@sha256:" + "b" * 64)
+    with pytest.raises(SystemExit):
         verify_images.main()
     assert not (tmp_path / "security-artifacts/verified-images.json").exists()
 

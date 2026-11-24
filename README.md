@@ -1,6 +1,6 @@
 > P0.4/P0.5 remediation: see [readiness, credentials, TLS and deployment prerequisites](docs/security.md).
 > `/readyz` is readiness; `/livez` is liveness; `/health` remains a readiness alias.
-> Official-image release verification requires verified `MINIO_DIGEST` and `MINIO_MC_DIGEST` values.
+> Release verification requires digest-pinned self-built MinIO images (`MINIO_IMAGE`, `MINIO_MC_IMAGE`).
 
 ﻿# Data LakeHouse — Server
 
@@ -46,13 +46,17 @@ Chỉ dùng `compose.yaml`; chọn image và xác thực qua `.env` hoặc biế
 
 | Cách chạy | Cấu hình | Lệnh |
 |---|---|---|
-| Image MinIO chính thức | `MINIO_DIGEST`, `MINIO_MC_DIGEST`; API build từ source | `docker compose up -d --build` |
-| MinIO build từ source local | `MINIO_IMAGE=climate-minio-source:7aac2a2`, `MINIO_MC_IMAGE=climate-mc-source:77f82e1`, `MINIO_PULL_POLICY=never` | `docker compose up -d --build` |
+| MinIO tự build (khuyến nghị, qua gate release) | `MINIO_IMAGE=noname12346767/my-minio@sha256:...`, `MINIO_MC_IMAGE=noname12346767/mc-allos@sha256:...`; API build từ source | `docker compose up -d --build` |
+| MinIO tự build chỉ có trên máy (chưa push) | `MINIO_IMAGE=noname12346767/my-minio`, `MINIO_MC_IMAGE=noname12346767/mc-allos`, `MINIO_PULL_POLICY=never` | `docker compose up -d --build` |
 | Image demo có sẵn | Đặt `CLIMATE_API_IMAGE`, `MINIO_IMAGE`, `MINIO_MC_IMAGE` theo image đã chọn; `API_PULL_POLICY=never`, `MINIO_PULL_POLICY=never` | `docker compose up -d --no-build` |
 | Internet qua Nginx/TLS | Chọn image như trên; thêm `ENABLE_STATIC_KEYS=false` và `API_KEYS` chứa key records hợp lệ | `docker compose up -d` |
 
-`MINIO_IMAGE`/`MINIO_MC_IMAGE` ưu tiên hơn digest mặc định. Image local/demo phải tồn tại
-trước khi chạy và không được coi là đã qua gate release image chính thức. Với project
+`compose.yaml` chạy đúng hai image trong `MINIO_IMAGE`/`MINIO_MC_IMAGE`, cũng là hai
+image mà `scripts/release/verify_images.py` kiểm định. Vì vậy gate bảo vệ đúng thứ
+thực sự chạy. Chỉ dùng image MinIO do bạn tự build (`noname12346767/my-minio`,
+`noname12346767/mc-allos`); không trỏ sang image của nhà phát hành khác như
+`quay.io/minio/*` hay `minio/*`. Gate yêu cầu pin theo `@sha256:`; image local/demo
+phải tồn tại trước khi chạy và không được coi là đã qua gate release. Với project
 đang tồn tại, tiếp tục dùng đúng `-p <tên-project-cũ>`; giữ nguyên `bronze`, `registry`,
 `minio-data`. Không cần xóa hoặc tạo lại volumes khi chuyển sang file hợp nhất.
 
@@ -105,7 +109,7 @@ python -m climate_platform.datasets.usdm.science --help             # GIS worker
 | `S3_ACCESS_KEY` | Tên ingestion riêng do bạn đặt; khác root |
 | `S3_SECRET_KEY` | Mật khẩu ingestion ngẫu nhiên, khác mật khẩu root |
 
-`STORAGE_BACKEND=s3`, tên bốn bucket và các giới hạn vận hành khác đã được hardcode làm giá trị mặc định trong `src/climate_platform/config.py` (và `compose.yaml`), không cần khai báo trong `.env`; chỉ hai digest image cần điền trong `.env.example`. Endpoint `http://127.0.0.1:9000` dùng cho công cụ native; Compose tự đặt `http://minio:9000` cho API.
+`STORAGE_BACKEND=s3`, tên bốn bucket và các giới hạn vận hành khác đã được hardcode làm giá trị mặc định trong `src/climate_platform/config.py` (và `compose.yaml`), không cần khai báo trong `.env`; chỉ hai tham chiếu image MinIO tự build (`MINIO_IMAGE`, `MINIO_MC_IMAGE`) cần điền trong `.env.example`. Endpoint `http://127.0.0.1:9000` dùng cho công cụ native; Compose tự đặt `http://minio:9000` cho API.
 
 Có thể tạo từng khóa bằng PowerShell và lưu kết quả vào `.env`:
 
@@ -255,7 +259,7 @@ Smoke dùng project, bucket, registry và credentials riêng để kiểm tra Cl
 
 ## 10. Trạng thái và giới hạn
 
-[Báo cáo tích hợp](MINIO_INTEGRATION_REPORT.md) ghi digest, kết quả test và migration tại môi trường triển khai. Hai image bên thứ ba bắt buộc có CVE High/Critical và chưa xác minh chuỗi chữ ký nguồn gốc. Kết quả chức năng PASS không có nghĩa hệ thống đã được chấp thuận an toàn production. Xem [scan MinIO](docs/security/minio-cves.md), [scan mc](docs/security/mc-cves.md).
+[Báo cáo tích hợp](MINIO_INTEGRATION_REPORT.md) ghi digest, kết quả test và migration tại môi trường triển khai. Hai image MinIO tự build cần được gate release scan vì có thể chứa CVE High/Critical. Kết quả chức năng PASS không có nghĩa hệ thống đã được chấp thuận an toàn production. Xem [scan MinIO](docs/security/minio-cves.md), [scan mc](docs/security/mc-cves.md).
 
 Collector hiện còn là khung tích hợp; dữ liệu mẫu chỉ dùng thử truyền file, không phải bộ dữ liệu khoa học đã kiểm định.
 

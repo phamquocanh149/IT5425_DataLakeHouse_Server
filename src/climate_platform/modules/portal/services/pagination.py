@@ -5,24 +5,21 @@ from datetime import date
 from climate_platform.modules.portal.errors import PortalError
 
 
-def paginate(store, user_id, request, items, rid, default=25, maximum=100):
+def paginate(store, user_id, ctx, items, rid, default=25, maximum=100):
     try:
-        limit = int(request.query_params.get("limit", default))
+        limit = int(ctx.params.get("limit", default))
     except ValueError:
         raise PortalError(422, "INVALID_FILTER") from None
     if not 1 <= limit <= maximum:
         raise PortalError(422, "INVALID_FILTER")
     signature = {
-        "path": request.url.path,
-        "filters": sorted(
-            [k, v]
-            for k, v in request.query_params.multi_items()
-            if k not in {"cursor", "release_id"}
-        ),
+        "path": ctx.path,
+        "filters": sorted([k, v] for k, v in ctx.pairs if k not in {"cursor", "release_id"}),
     }
     offset = 0
-    if request.query_params.get("cursor"):
-        saved = store.resolve(request.query_params["cursor"], "cursor", user_id)
+    cursor = ctx.params.get("cursor")
+    if cursor:
+        saved = store.resolve(cursor, "cursor", user_id)
         if saved["signature"] != signature or saved["release_id"] != rid:
             raise PortalError(400, "INVALID_CURSOR")
         offset = saved["offset"]
@@ -38,12 +35,12 @@ def paginate(store, user_id, request, items, rid, default=25, maximum=100):
         "items": page,
         "page": {"limit": limit, "next_cursor": nxt},
         "release_id": rid,
-        "request_id": request.state.request_id,
+        "request_id": ctx.request_id,
     }
 
 
-def date_range(request, rows, field):
-    lower, upper = request.query_params.get("from"), request.query_params.get("to")
+def date_range(ctx, rows, field):
+    lower, upper = ctx.params.get("from"), ctx.params.get("to")
     try:
         for value in (lower, upper):
             if value and date.fromisoformat(value).isoformat() != value:

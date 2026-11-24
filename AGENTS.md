@@ -28,6 +28,11 @@ File này chỉ giữ **rules/convention** để làm việc trong repo. Plan, r
 - **[Backlog](.agents/plans/BACKLOG.md)** — việc đã ghi nhận nhưng chưa sửa.
 - Chỉ đọc plan để biết tiến độ; roadmap **không** cấp quyền triển khai stage tiếp theo, deploy,
   rotate secrets, apply retention hoặc cài dependency. Chỉ làm stage/task người dùng đã giao.
+- **[REFACTOR.MD](.agents/plans/REFACTOR.MD) — cập nhật cấu trúc folder bắt buộc:** mỗi lần sửa file
+  này **phải** cập nhật đồng thời phần **cấu trúc thư mục** trong cùng lần sửa — **mục 4** (cây
+  `src/climate_platform/` + bảng "Tác dụng / Nội dung" 4.1–4.4), **mục 12.4–12.5** (tầng dữ liệu
+  `entity/` · `repositories/` · `s3/`), và mọi cây/bảng vị trí file liên quan. Không để mô tả cấu
+  trúc lệch với `src/` thực tế hoặc lệch với phần còn lại của file.
 
 ## Cấu trúc repo
 
@@ -48,16 +53,19 @@ File này chỉ giữ **rules/convention** để làm việc trong repo. Plan, r
   │   ├── migration/             # Migration, import và reconcile storage
   │   ├── ops/                   # Công cụ vận hành thủ công và init MinIO
   │   ├── portal/                # Demo, publish và benchmark Portal
-  │   ├── process_data/          # CLI xử lý dữ liệu theo batch
-  │   │   ├── nldas/             # NLDAS Bronze -> Silver -> Gold medallion
-  │   │   └── usdm/              # CLI replay/verify USDM
+  │   ├── process_data/          # Entrypoint mỏng (tham khảo) gọi package; không chứa science
+  │   │   ├── nldas/             # NLDAS: create_silver/create_gold/run_bronze_to_gold (thin)
+  │   │   ├── noaa/              # NOAA: run_noaa_bronze_to_gold (thin) + crawl/verify (ref)
+  │   │   ├── usdm/              # CLI replay/verify USDM (thin)
+  │   │   └── usgs/              # USGS: run_usgs/run_usgs_bronze_to_gold (thin)
   │   ├── release/               # Gate release: GIS report và image scan
   │   └── smoke/                 # Smoke test và fault assertions
   ├── src/climate_platform/      # Backend Python, package cài được (không còn server/)
   │   ├── app.py                 # AppModule: composition root (uvicorn target)
   │   ├── config.py              # ConfigModule: Settings/.env
   │   ├── cli.py                 # Console entry points
-  │   ├── common/                # Cross-cutting: errors, middleware, pipes, interceptors
+  │   ├── common/                # Cross-cutting: errors, middleware, pipes, interceptors, clock, console
+  │   ├── medallion/             # Chuẩn phân tầng Bronze→Silver→Gold: contracts/paths/io/lock/publisher/gate/runner
   │   ├── modules/               # Feature modules (controller/service/repository/dto)
   │   │   ├── system/            # /livez /readyz /health + readiness probe
   │   │   ├── auth/              # Authentication + session
@@ -65,10 +73,13 @@ File này chỉ giữ **rules/convention** để làm việc trong repo. Plan, r
   │   │   ├── ingestion/         # Validation và luồng ingest → Bronze
   │   │   ├── storage/           # Object storage repository (MinIO/S3 + local Bronze)
   │   │   ├── catalog/           # Registry SQLite + maintenance/reconcile
-  │   │   ├── processing/        # Processor engine + publisher
+  │   │   ├── processing/        # Processor engine + registry (publisher re-export từ medallion)
   │   │   └── portal/            # Portal API (opt-in)
-  │   └── datasets/
-  │       └── usdm/resources/     # Dataset USDM, science và resources (byte-pinned)
+  │   └── datasets/              # Plugin dataset — mỗi dataset chia tầng một-việc
+  │       ├── noaa/              # spec/paths/validation/bronze/gate/silver/gold/pipeline/processor
+  │       ├── usgs/              # crawl/silver/weekly/gold/manifest/pipeline/processor (+ API, store)
+  │       ├── nldas/             # bronze/silver/gold/gate/pipeline/processor
+  │       └── usdm/              # bronze/worker/publisher/recipe/warehouse/pipeline/processor (+ science/resources byte-pinned)
   ├── tests/                     # Unit/component tests và integration/
   ├── warehouse/                 # Vùng warehouse/runtime
   ├── compose.yaml
@@ -126,6 +137,23 @@ File này chỉ giữ **rules/convention** để làm việc trong repo. Plan, r
   hashes.
 - Dependency pin trực tiếp trong `pyproject.toml`/`requirements*.txt`; không coi venv có sẵn là
   bằng chứng clean install. Mỗi đường cài phải được chốt khi thêm dependency.
+
+## Truy vấn dữ liệu — ORM bắt buộc
+
+- **Mọi truy vấn SQL phải viết bằng ORM SQLAlchemy 2.0** (`select()`/`insert()`/`update()`/
+  `delete()` trên entity ở `src/climate_platform/entity/`), chạy qua `repositories/database.py`.
+  Không viết câu SQL dạng chuỗi cho SELECT/INSERT/UPDATE/DELETE.
+- Upsert/`INSERT OR REPLACE`/`INSERT OR IGNORE` dùng `sqlalchemy.dialects.sqlite.insert(...)` với
+  `on_conflict_do_update`/`on_conflict_do_nothing` — không viết chuỗi `INSERT OR ...`.
+- Bắt buộc thêm entity tương ứng trong `entity/<db>.py` trước khi truy vấn; repository chỉ dùng
+  entity, không dựng câu lệnh chuỗi.
+- **Ngoại lệ được phép giữ dạng thô** (không phải truy vấn nghiệp vụ): điều khiển transaction
+  (`BEGIN`/`BEGIN IMMEDIATE`/`COMMIT`/`ROLLBACK`), `PRAGMA`, DDL (`ALTER TABLE`/`CREATE VIEW`/
+  `executescript`), SQLite backup API, và process đọc tách biệt có giới hạn tài nguyên
+  (`modules/portal/workers/read_worker.py` chạy bằng `python -I`). Mỗi ngoại lệ phải có comment lý do.
+- Conversion sang ORM **không** được đổi hành vi: giữ nguyên transaction, upsert semantics,
+  thứ tự/so sánh kết quả và HTTP contract. Bằng chứng: `ruff check` + `ruff format --check` +
+  `pytest -q`.
 
 ## Compatibility phải giữ
 

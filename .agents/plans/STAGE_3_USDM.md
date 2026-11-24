@@ -13,7 +13,7 @@ MinIO Stage 2.
 | S3.01 | Identity/provenance USDM | DONE local: owner `usdm-replay`, dataset key `usdm/gis/CONUS/M/weekly`, lineage file_id/revision/raw/member/recipe/grid hashes |
 | S3.02 | Nhận raw thật | DONE local qua CLI offline và registry hiện có; ZIP xác định giữ bytes sidecars, không phải HTTP upload từ Client |
 | S3.03 | Replay/revision | DONE local: 130 succeeded/0 failed; rerun 130 skipped/0 failed; tests corruption/orphan/lock/rollback |
-| S3.04 | Mở rộng nguồn khác | TODO: NOAA/USGS/NLDAS chưa có pipeline khoa học |
+| S3.04 | Mở rộng nguồn khác | PARTIAL: NOAA và USGS có auto-runner Bronze→Gold + `NoaaProcessor`/`UsgsProcessor` đăng ký trong `default_registry()` (2026-11-24, `ruff` + import smoke; chưa chạy data thật vì cần Bronze/USGS API key). NLDAS vẫn theo mẫu `scripts/process_data/nldas/run_bronze_to_gold.py`, chưa đăng ký processor |
 | S3.05 | Silver GeoParquet, validation và quality | DONE local: 625 features, 61 repairs; CRS/DM/geometry gate, quarantine chặn publish cả tuần |
 | S3.06 | Gold CSV và SQLite warehouse | DONE local: 3.259 grid × 130 tuần = 423.670 rows, 0 mismatch/missing/extra với tham chiếu |
 | S3.07 | Lineage/current/history và verify | DONE local: source/product hashes khớp; 130 current builds, 131 historical builds gồm pilot |

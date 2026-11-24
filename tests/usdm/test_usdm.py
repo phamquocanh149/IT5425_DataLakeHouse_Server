@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from climate_platform.modules.catalog.model import file_hash
+from climate_platform.common.hashing import file_hash
 from climate_platform.config import settings
-from climate_platform.datasets.usdm import processor as usdm
+from climate_platform.datasets.usdm import pipeline as usdm
 
 
 @pytest.fixture

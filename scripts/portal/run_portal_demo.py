@@ -9,8 +9,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 def main():
     import uvicorn
-    from climate_platform.api.portal.config import PortalConfig
-    from climate_platform.api.portal.demo import DEMO_USERS, create_demo_app
+    from climate_platform.modules.portal.config import PortalConfig
+    from climate_platform.modules.portal.workers.demo import DEMO_USERS, create_demo_app
 
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--port", type=int, default=8010)

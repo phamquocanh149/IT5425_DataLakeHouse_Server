@@ -1,8 +1,8 @@
 """Dataset processor contract (Strategy/Plugin).
 
 A new dataset (NOAA, USGS, NLDAS) adds its own processor implementing this interface
-without touching the processing engine, serving, or catalog code. Phase 1 wires only
-the USDM processor; the remaining datasets are intentionally not built yet.
+without touching the processing engine, serving, or catalog code. The default registry
+wires the USDM, NOAA and USGS processors; NLDAS is intentionally not built yet.
 
 The engine drives discovery and per-unit processing; the processor owns dataset-specific
 science, validation and product publishing through the Bronze registry.
@@ -10,6 +10,8 @@ science, validation and product publishing through the Bronze registry.
 
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
+
+from climate_platform.medallion.contracts import Readiness
 
 
 @dataclass(frozen=True)
@@ -48,6 +50,6 @@ class DatasetProcessor(Protocol):
 
     source: str
 
-    def discover(self, start: str | None = None, end: str | None = None) -> dict: ...
+    def discover(self, start: str | None = None, end: str | None = None) -> Readiness: ...
 
     def run(self, config: ProcessorConfig | None = None) -> ProcessingReport: ...

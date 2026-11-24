@@ -12,8 +12,24 @@ Chỉ thực hiện khi người dùng giao task; roadmap không tự cấp quy�
 > đủ điều kiện" là **tính năng mới**, tách riêng ở **mục 11** — không thuộc phạm vi refactor và
 > cần task/quyết định riêng trước khi triển khai.
 
+> **Bổ sung 2026-11-24 (đã thực hiện):** mục **13** đặc tả và **đã triển khai** yêu cầu
+> **controller mỏng** — controller **chỉ gọi Service**, còn mọi business logic (validate nghiệp vụ,
+> transaction, audit, orchestration) thuộc **Service** (Service là nơi xử lý logic **đầu tiên**).
+> Đã làm mỏng controller của `portal`/`ingestion`/`auth` (C1–C5); xem bằng chứng ở mục 13.8.
+
 Nguồn rules/convention: [../../AGENTS.md](../../AGENTS.md). Plan/stage hiện tại:
 [AGENT.md](AGENT.md). Ánh xạ module hiện hành: [../../docs/AGENT_MODULES.md](../../docs/AGENT_MODULES.md).
+
+> **QUY TẮC BẮT BUỘC — CẬP NHẬT CẤU TRÚC FOLDER:** Mọi lần sửa file này **bắt buộc** cập nhật
+> đồng thời phần **cấu trúc thư mục** trong **cùng lần sửa**:
+> - **Mục 4 (Cấu trúc thư mục đích)** — cây `src/climate_platform/` và các mục con 4.1–4.4 (bảng
+>   "Tác dụng / Nội dung" từng file), 4.2/4.3 nếu thay đổi liên quan.
+> - **Mục 12.4–12.5** khi thay đổi liên quan tầng dữ liệu (`entity/` · `repositories/` · `s3/`).
+> - Mọi cây thư mục, bảng ánh xạ file, hoặc danh sách đường dẫn xuất hiện ở bất kỳ mục nào khác.
+>
+> Không được để `REFACTOR.MD` mô tả cấu trúc lệch với `src/` thực tế hoặc lệch với phần còn lại
+> của chính file. Trước khi kết thúc, tự kiểm cây thư mục khớp `src/climate_platform/` hiện tại và
+> cập nhật lại nếu cần. Xem rule tương ứng trong [../../AGENTS.md](../../AGENTS.md) mục "Plan và roadmap".
 
 ---
 
@@ -132,11 +148,16 @@ src/climate_platform/
 │
 ├── common/                    # CROSS-CUTTING dùng chung mọi module — KHÔNG chứa business logic
 │   ├── __init__.py
-│   ├── errors.py              #   Exception Filter: lỗi domain → HTTP, chuẩn hoá response lỗi
+│   ├── errors.py              #   Exception Filter + PortalError dùng chung (domain lỗi nền, KHÔNG import module)
+│   ├── hashing.py             #   SHA-256 file_hash — 1 bản duy nhất dùng cho storage/catalog/release/dataset
+│   ├── fs.py                  #   Helper filesystem dùng chung: contained() (path-containment)
+│   ├── security.py            #   PBKDF2 hash/verify password dùng chung (auth service + repo credentials)
 │   ├── middleware.py          #   Middleware: auth SỚM (trước multipart) + rate limit + accounting + audit
 │   │                          #   (SQL access.sqlite3 → repositories/access_repository.py — mục 12)
 │   ├── pipes.py               #   Pipe/validator tái sử dụng (source, date, cursor/limit...)
-│   └── interceptors.py        #   Interceptor-helper: request-id, security headers, timing
+│   ├── interceptors.py        #   Interceptor-helper: request-id, security headers, timing
+│   ├── clock.py               #   [mục 15] utc_now_iso() — timestamp UTC dùng chung cho pipeline
+│   └── console.py             #   [mục 15] configure_stdio() — UTF-8 stdout/stderr cho CLI batch
 │
 ├── entity/                    # [MỚI — mục 12] SQLAlchemy ORM entity (map bảng ↔ object). Cấp package.
 │   ├── __init__.py
@@ -144,7 +165,8 @@ src/climate_platform/
 │   ├── registry.py            #   ingestion.sqlite3: Observation, ContentBlob, RecoveryReport
 │   ├── control.py             #   control.sqlite3: User, Session, Grant, Transient, Audit, Config, PortalUsage, Lease
 │   ├── warehouse.py           #   warehouse.sqlite3: Build, Attempt, GoldCell (+ view gold_weekly)
-│   └── access.py              #   access.sqlite3: AccessUsage
+│   ├── access.py              #   access.sqlite3: AccessUsage
+│   └── view.py                #   [mới] Pydantic view FileMetadata (row ↔ transport) — thay modules/catalog/model.py
 │
 ├── repositories/              # [MỚI — mục 12] Tầng truy cập dữ liệu SQL (SQLAlchemy). Cấp package.
 │   ├── __init__.py
@@ -156,15 +178,26 @@ src/climate_platform/
 │   ├── control_repository.py  #   transient/usage/leases/audit/config (+ facade Store)
 │   ├── access_repository.py   #   rate-limit/quota accounting (access.sqlite3)
 │   ├── warehouse_repository.py#   builds/attempts/gold_cells (warehouse.sqlite3)
-│   └── releases.py            #   snapshot/backup read-only của release (thay portal/repositories/releases.py)
+│   └── releases.py            #   Release ARTIFACT STORE (Release read-model + verify/activate/snapshot); publish → modules/portal/services/publish.py
 │
 ├── s3/                        # [MỚI — mục 12] Object storage repository (MinIO/S3 + local Bronze). Cấp package.
 │   ├── __init__.py
 │   ├── object_repository.py   #   Hợp đồng (Protocol) ObjectRepository (publish/verify/get/list)
 │   ├── minio_repository.py    #   Impl MinIO/S3 (gộp S3Storage/boto3)
 │   ├── local_repository.py    #   Impl filesystem Bronze (STORAGE_BACKEND=local)
+│   ├── client.py              #   [mới] Factory boto3 S3 client dùng chung (repo + readiness probe)
 │   ├── keys.py                #   object_key builder (layout bất biến)
 │   └── module.py              #   Wiring: object_repository() chọn impl theo STORAGE_BACKEND
+│
+├── medallion/                 # [MỚI — mục 15] Chuẩn phân tầng Bronze→Silver→Gold dùng chung, MỖI FILE MỘT VIỆC
+│   ├── __init__.py            #   Export công khai của chuẩn
+│   ├── contracts.py           #   Layer/Readiness/StageResult/RunReport + Protocol Stage/Gate (thuần kiểu)
+│   ├── paths.py               #   MedallionPaths: root theo source+layer (env <SOURCE>_<LAYER>_ROOT, default data_lake/<layer>/<source>)
+│   ├── io.py                  #   file_hash/write_json_atomic/atomic_replace (re-export common.hashing)
+│   ├── lock.py                #   exclusive_run — MỘT bản lock OS cross-platform (thay 6 bản copy cũ)
+│   ├── publisher.py           #   publish_atomic/product_path — publish sản phẩm bất biến, không ghi đè payload khác
+│   ├── gate.py                #   AllOf/FunctionGate — ghép điều kiện eligibility
+│   └── runner.py              #   MedallionRunner + medallion_lock — chạy stage đúng thứ tự dưới lock, idempotent
 │
 # Guard KHÔNG ở common: xác thực → modules/auth/guards.py; phân quyền → modules/authorization/guards (D8/D9).
 # Repository (SQL/object) KHÔNG nằm trong modules: đặt ở entity/ + repositories/ + s3/ (mục 12).
@@ -178,14 +211,14 @@ src/climate_platform/
 │   ├── auth/                  # Module Auth: AUTHENTICATION + SESSION (tách khỏi portal — D8). Chỉ trả lời "BẠN LÀ AI"
 │   │   ├── __init__.py        #   (repository users/sessions → repositories/auth_repository.py — mục 12)
 │   │   ├── module.py          #   Wiring: AuthService + guard xác thực + router
-│   │   ├── controllers/
+│   │   ├── controllers/       #   (MỎNG — chỉ gọi services/, xem mục 13)
 │   │   │   ├── __init__.py
 │   │   │   ├── login.py       #     POST /auth/login (username/password), GET /auth/info, POST /auth/logout
 │   │   │   └── session.py     #     GET /session
 │   │   ├── services/
 │   │   │   ├── __init__.py
-│   │   │   ├── password.py    #     verify username/password PBKDF2 (từ api/portal/auth.py)
-│   │   │   ├── session.py     #     tạo/huỷ/đọc session
+│   │   │   ├── password.py    #     re-export PBKDF2 từ common/security.py (dùng chung với repo credentials)
+│   │   │   ├── session.py     #     [mục 13] tạo/huỷ/đọc session + session_payload + audit logout
 │   │   │   └── api_key.py     #     xác thực API key collector (từ api/access.authenticate)
 │   │   ├── dto.py             #   DTO: UserInput, SessionOut
 │   │   └── guards.py          #   Guard XÁC THỰC: require_session, require_api_key (D9)
@@ -203,8 +236,8 @@ src/climate_platform/
 │   ├── ingestion/             # Module Ingestion: nhận file từ collector → Bronze, dedup, ghi registry
 │   │   ├── __init__.py
 │   │   ├── module.py          #   Wiring: ghép controller + service + guard
-│   │   ├── controller.py      #   Route /upload, /uploads (mỏng, từ api/app.py)
-│   │   ├── service.py         #   Nghiệp vụ ingest: stream, SHA-256, size cap, đặt atomic (từ ingestion/service.py)
+│   │   ├── controller.py      #   Route /upload, /uploads (MỎNG — gọi service, xem mục 13)
+│   │   ├── service.py         #   Nghiệp vụ ingest: stream, SHA-256, size cap, đặt atomic; [mục 13] authorize list + map admin
 │   │   ├── dto.py             #   DTO vào/ra: IngestionResponse
 │   │   └── validation.py      #   Pipe: validate source/source_date/filename (từ ingestion/validation.py)
 │   ├── catalog/               # Module Catalog: registry metadata + bảo trì/reconcile
@@ -213,32 +246,35 @@ src/climate_platform/
 │   │   ├── service.py         #   Orchestration registry ↔ object storage (optimistic publish)
 │   │   ├── maintenance.py     #   Migrate/reconcile local (từ catalog/maintenance.py)
 │   │   └── s3_maintenance.py  #   Migrate/reconcile S3 (từ catalog/s3_maintenance.py)
-│   │                          #   (entity FileMetadata → entity/registry.py; repository SQL → repositories/catalog_repository.py — mục 12)
+│   │                          #   (view FileMetadata → entity/view.py; repository SQL → repositories/catalog_repository.py — mục 12)
 │   ├── processing/            # Module Processing: chạy processor dataset theo batch (Strategy/Registry)
 │   │   ├── __init__.py
 │   │   ├── module.py          #   Wiring: đăng ký processor (default_registry)
-│   │   ├── contracts.py       #   Interface DatasetProcessor + ProcessorConfig/Report
-│   │   ├── engine.py          #   Engine tra cứu & chạy processor
-│   │   ├── publisher.py       #   Publish sản phẩm bất biến, kiểm checksum
+│   │   ├── contracts.py       #   Interface DatasetProcessor (discover→Readiness) + ProcessorConfig/Report
+│   │   ├── engine.py          #   Engine tra cứu & chạy processor; default_registry (usdm/noaa/usgs/nldas)
+│   │   ├── publisher.py       #   [mục 15] re-export medallion.publisher (1 bản publish bất biến)
 │   │   └── promoter.py        #   [TÍNH NĂNG MỚI mục 11] Vòng lặp --watch/--once đánh giá gate
 │   │                          #   Bronze→Gold rồi gọi run_pipeline; KHÔNG chứa logic dataset
 │   └── portal/                # Module Portal: API xem/tải 3 tầng — opt-in (auth/session ở modules/auth, phân quyền ở modules/authorization)
 │       ├── __init__.py
 │       ├── module.py          #   PortalModule = install_portal() (từ api/portal/app.py); gắn middleware portal + include router portal
 │       ├── config.py          #   PortalConfig
-│       ├── controllers/       #   Tầng nhận request, chia theo nhóm route
+│       ├── controllers/       #   Tầng nhận request (MỎNG — chỉ gọi services/, xem mục 13)
 │       │   ├── __init__.py
-│       │   ├── catalog.py     #     sources/datasets/overview/weeks/versions/attempts
-│       │   ├── selection.py   #     selections + layers/{preview,schema,quality,lineage,map} + download
-│       │   └── admin.py       #     datasets/audit (users/grants chuyển sang modules/auth + modules/authorization)
-│       ├── services/          #   Business logic portal
+│       │   ├── catalog.py     #     sources/datasets/overview/weeks/versions/attempts (gọi services/catalog.py)
+│       │   ├── selection.py   #     selections + layers/{preview,schema,quality,lineage,map} + download (gọi services/selection.py)
+│       │   └── admin.py       #     datasets/audit (users/grants → modules/auth + modules/authorization; gọi services/admin.py)
+│       ├── services/          #   Business logic portal (mục 13: controller CHỈ gọi các service này)
 │       │   ├── __init__.py
 │       │   ├── pagination.py  #     phân trang + cursor signature
 │       │   ├── release.py     #     Release facade + resolve release/data
-│       │   └── selection.py   #     selected()/table()/artifact_list()
+│       │   ├── selection.py   #     selected()/table()/artifact_list() + luật version/map/lease/stream
+│       │   ├── catalog.py     #     [mục 13] sources/datasets/overview/weeks/versions/attempts
+│       │   ├── admin.py       #     [mục 13] users/grants/audit + precondition/transaction/audit
+│       │   └── publish.py     #     [mới] prepare_release: orchestration publish release (dời khỏi repositories/releases.py)
 │       ├── dto.py             #   DTO: SelectionInput (GrantInput → authorization, UserInput → auth)
 │       ├── middleware.py      #   Middleware portal_access (CSRF, headers, audit) — KHÔNG chứa phân quyền (đã thành guard)
-│       ├── errors.py          #   PortalError + exception filter
+│       ├── errors.py          #   HTTP error filter; PortalError re-export từ common/errors.py
 │       └── workers/           #   Tiến trình con tách biệt
 │           ├── __init__.py
 │           ├── reader.py      #     Gọi subprocess đọc bounded
@@ -247,10 +283,16 @@ src/climate_platform/
 │           └── demo.py        #     Demo IdP loopback
 │       #   (store.py control → repositories/control_repository.py; releases.py → repositories/releases.py — mục 12)
 │
-└── datasets/usdm/             # Plugin dataset USDM (byte-pinned + subprocess path — GIỮ NGUYÊN, D3)
-    ├── processor.py           #   Orchestrate replay USDM Bronze→Silver→Gold
-    ├── science.py             #   GIS worker (byte-pinned, KHÔNG sửa)
-    └── resources/...          #   Resource byte-pinned (KHÔNG format/lint)
+└── datasets/                  # [mục 15] Plugin dataset — MỖI DATASET CHIA TẦNG MỘT-VIỆC
+    ├── noaa/                  #   spec · paths · validation · bronze · gate · silver · gold · pipeline · runner_cli · processor
+    ├── usgs/                  #   paths · config · errors · api · store · crawl · validate · export · preprocess
+    │                          #   · grid_huc · manifest · method · silver · weekly · gold · gate · pipeline
+    │                          #   · cli · runner_cli · stage_cli · fill_gold · workflow · processor
+    ├── nldas/                 #   spec · paths · deps · bronze · references · partition · complete · gate
+    │                          #   · silver · gold · pipeline · cli · runner_cli · processor
+    └── usdm/                  #   bronze · worker · publisher · recipe · warehouse · pipeline · processor
+        ├── science.py         #   GIS worker (byte-pinned, KHÔNG sửa)
+        └── resources/...      #   Resource byte-pinned (KHÔNG format/lint)
 ```
 
 ### 4.1 Quy ước mỗi module
@@ -276,9 +318,15 @@ def ingestion_router(catalog: CatalogService) -> APIRouter:
 **Định nghĩa Done cho một module:**
 - Có đủ `module.py`, `controller.py` (mỏng), `service.py` (nghiệp vụ), `repositories/` (nếu truy
   cập dữ liệu), `dto.py` (nếu có input/output).
-- Controller không import `sqlite3`/`boto3`; service không import `Request`/`Response`/`HTTPException`
-  (lỗi domain map ở filter).
+- **Controller chỉ gọi Service**: không `select`/`insert`/`update`/`delete` (ORM), không
+  `BEGIN IMMEDIATE`/transaction, không business rule/audit/lease, không định nghĩa DTO hay hằng số
+  nghiệp vụ inline; mỗi handler đọc input đã validate → gọi **một** phương thức service → dựng
+  response. Controller không import `sqlite3`/`boto3`.
+- Service là **nơi logic đầu tiên**: giữ validate nghiệp vụ, transaction, audit, orchestration
+  repository; **không** import `Request`/`Response`/`HTTPException`/cookie (lỗi domain map ở filter).
 - Test của module PASS; route/response không đổi so với baseline.
+
+> Yêu cầu "controller mỏng → Service" còn phần chưa làm; xem **mục 13**.
 
 > **Cập nhật bởi mục 12 (D21):** repository **không** còn nằm trong `modules/*/repositories/`. Tầng
 > dữ liệu được nâng ra **cấp package**: `entity/` (SQLAlchemy entity), `repositories/` (SQL, đặt tên
@@ -375,7 +423,10 @@ Quy ước: "Tác dụng" = file để làm gì (trách nhiệm); "Nội dung" =
 | File | Tác dụng | Nội dung |
 |---|---|---|
 | `__init__.py` | Package marker | Rỗng |
-| `errors.py` | Exception Filter dùng chung | Lỗi domain + handler map sang HTTP, chuẩn hoá payload `{"detail": ...}`; giữ tương thích `HTTPException` |
+| `errors.py` | Exception Filter + domain error dùng chung | `PortalError` (domain lỗi nền, KHÔNG import module) + handler map sang HTTP, chuẩn hoá payload `{"detail": ...}`; giữ tương thích `HTTPException` |
+| `hashing.py` | Hash dùng chung | `file_hash()` SHA-256 — 1 bản duy nhất thay 4 bản trùng ở storage/catalog/release/dataset |
+| `fs.py` | Helper filesystem dùng chung | `contained(root, relative)` (path-containment) dùng bởi release store + portal services |
+| `security.py` | Password dùng chung | `hash_password`/`verify_password` PBKDF2 — auth service và repo credentials dùng chung |
 | `guards.py` | Guard xác thực/authorization dùng chung | `get_current_client` (header API key, cache `request.state`), `allowed_sources`, gọi `authenticate`; đọc `settings.API_KEYS`/static keys |
 | `middleware.py` | Middleware cấp app | `AccessMiddleware`: auth trước multipart, `charge` rate-limit/quota (SQLite), cap body upload, audit log JSON; `access_probe` (từ `api/access.py`) |
 | `pipes.py` | Pipe/validator tái sử dụng | Sanitize filename, validate source/source_date dùng chung (tách từ `ingestion/validation.py` khi cần chia sẻ) |
@@ -394,16 +445,16 @@ Quy ước: "Tác dụng" = file để làm gì (trách nhiệm); "Nội dung" =
 | File | Tác dụng | Nội dung |
 |---|---|---|
 | `module.py` | Wiring auth module | `AuthService` + repository + guard xác thực + router; export service/guard cho module khác |
-| `controllers/login.py` | Route đăng nhập | `POST /auth/login` (username/password), `GET /auth/info`, `POST /auth/logout` (từ `api/portal/auth.py`) |
-| `controllers/session.py` | Phiên người dùng | `GET /session` (user, role, csrf, demo) |
-| `services/password.py` | Xác thực mật khẩu | verify PBKDF2 username/password (từ `api/portal/auth.login` + `store.authenticate`) |
-| `services/session.py` | Vòng đời session | tạo/huỷ/đọc session, rotate cookie |
+| `controllers/login.py` | Route đăng nhập (**MỎNG**) | `POST /auth/login` (username/password), `GET /auth/info`, `POST /auth/logout` (từ `api/portal/auth.py`); [mục 13] chỉ gọi service + set/clear cookie |
+| `controllers/session.py` | Phiên người dùng (**MỎNG**) | `GET /session` (user, role, csrf, demo); [mục 13] gọi `services/session.py` |
+| `services/password.py` | Xác thực mật khẩu | re-export PBKDF2 từ `common/security.py` (dùng chung với repo credentials) |
+| `services/session.py` | Vòng đời session | [mục 13] tạo/huỷ/đọc session, rotate cookie, `session_payload`, audit logout |
 | `services/api_key.py` | Xác thực API key | `authenticate()` (từ `api/access.py`) |
-| `repositories/user_repository.py` | SQLite users/roles | users + roles (tách từ Portal `Store`) |
-| `repositories/session_repository.py` | SQLite sessions | sessions |
-| `repositories/api_key_repository.py` | Kho API key | đọc `settings.API_KEYS`/static keys |
 | `dto.py` | DTO auth | `UserInput`, session output |
 | `guards.py` | Guard **xác thực** | `require_session`, `require_api_key` (D9) — chỉ trả lời "bạn là ai" |
+
+> [mục 12] users/sessions SQL đã chuyển ra **package** `repositories/auth_repository.py`; module **không** còn
+> `repositories/` riêng (bảng cũ liệt kê `repositories/user_repository.py`/`session_repository.py` đã gỡ).
 
 #### `modules/authorization/` — phân quyền, guard tái dùng (D9)
 
@@ -414,36 +465,40 @@ Quy ước: "Tác dụng" = file để làm gì (trách nhiệm); "Nội dung" =
 | `guards/require_grant.py` | Guard theo grant | quyền theo dataset |
 | `guards/require_source.py` | Guard theo source | `allowed_sources` cho upload (từ `api/security.authorize_upload`) |
 | `services/policy.py` | Luật phân quyền | role + grants + `allowed()`/`admin()` (từ `api/portal/api.py` + `api/security.py`) |
-| `repositories/grant_repository.py` | SQLite grants | grants (tách từ Portal `Store`) |
+| _(repository — [mục 12])_ | SQLite grants | grants → **package** `repositories/authorization_repository.py` (module không còn `repositories/grant_repository.py`) |
 
 #### `modules/ingestion/` — nhận file → Bronze
 
 | File | Tác dụng | Nội dung |
 |---|---|---|
 | `module.py` | Wiring ingestion module | Ghép controller + `IngestionService` + guard |
-| `controller.py` | Route nhận upload | `POST /upload`, `GET /uploads` (mỏng; từ `api/app.py`) |
-| `service.py` | Nghiệp vụ ingest | `IngestionService`/`process_file_upload`: stream chunk, SHA-256, size cap, temp file + fsync, gọi catalog service, cleanup temp (từ `ingestion/service.py`) |
+| `controller.py` | Route nhận upload (**MỎNG**) | `POST /upload`, `GET /uploads`; [mục 13] chỉ gọi `IngestionService` |
+| `service.py` | Nghiệp vụ ingest | `IngestionService`/`process_file_upload`: stream chunk, SHA-256, size cap, temp file + fsync, gọi catalog service, cleanup temp; [mục 13] authorize list + map `admin` |
 | `dto.py` | DTO vào/ra | `IngestionResponse` (`status`, `message`, `metadata`) |
 | `validation.py` | Pipe validate input | `sanitize_filename`, `validate_source`, `validate_source_date` (từ `ingestion/validation.py`) |
 
-#### `modules/storage/` — repository cho object storage
+#### `modules/storage/` — repository cho object storage — **[mục 12] đã chuyển sang package `s3/`**
+
+> Vị trí đích: `s3/module.py` · `s3/object_repository.py` · `s3/minio_repository.py` ·
+> `s3/local_repository.py` · `s3/keys.py` (cây ở **mục 4**). Bảng dưới giữ ý nghĩa, chỉ đổi chỗ.
 
 | File | Tác dụng | Nội dung |
 |---|---|---|
-| `module.py` | Wiring storage module | `storage_provider()` chọn impl theo `settings.STORAGE_BACKEND` |
-| `repositories/object_repository.py` | Định nghĩa hợp đồng repository | `Protocol ObjectRepository`: `publish`, `verify`, `get_object`, `objects`, thuộc tính `bucket` |
-| `repositories/minio_repository.py` | Cài đặt MinIO/S3 | Bọc/gộp `S3Storage` + boto3 client (conditional PUT `IfNoneMatch`, orphan adoption, verify) |
-| `repositories/local_repository.py` | Cài đặt filesystem Bronze | Ghi/đọc raw local khi `STORAGE_BACKEND=local` (tách khỏi nhánh trong `register_upload`) |
-| `keys.py` | Sinh object key | `object_key(source, date, dataset_key, revision, sha256, filename)` — layout bất biến (từ `object_store.py`) |
+| `module.py` → `s3/module.py` | Wiring storage module | `storage_provider()` chọn impl theo `settings.STORAGE_BACKEND` |
+| `repositories/object_repository.py` → `s3/object_repository.py` | Định nghĩa hợp đồng repository | `Protocol ObjectRepository`: `publish`, `verify`, `get_object`, `objects`, thuộc tính `bucket` |
+| `repositories/minio_repository.py` → `s3/minio_repository.py` | Cài đặt MinIO/S3 | Bọc/gộp `S3Storage` + boto3 client (conditional PUT `IfNoneMatch`, orphan adoption, verify) |
+| `repositories/local_repository.py` → `s3/local_repository.py` | Cài đặt filesystem Bronze | Ghi/đọc raw local khi `STORAGE_BACKEND=local` (tách khỏi nhánh trong `register_upload`) |
+| `client.py` → `s3/client.py` | Factory S3 client dùng chung | `s3_client(...)` (endpoint/creds từ Settings) — repo + readiness probe dùng chung |
+| `keys.py` → `s3/keys.py` | Sinh object key | `object_key(source, date, dataset_key, revision, sha256, filename)` — layout bất biến (từ `object_store.py`) |
 
 #### `modules/catalog/` — registry + bảo trì
 
 | File | Tác dụng | Nội dung |
 |---|---|---|
-| `module.py` | Wiring catalog module | Cấp `CatalogService` + `sqlite_repository`; nhận `ObjectRepository` từ `modules/storage` |
-| `model.py` | Entity | `FileMetadata` (map DB row ↔ object; giữ field/status/revision) |
+| `module.py` | Wiring catalog module | Cấp `CatalogService`; nhận `ObjectRepository` từ **`s3/`** (mục 12) |
+| _(view — [mục 14])_ | Entity view | `FileMetadata` map DB row ↔ object → **package** `entity/view.py` (module không còn `catalog/model.py`); field/status/revision giữ nguyên |
 | `service.py` | Orchestration nghiệp vụ | "Optimistic publication" DB ↔ object storage (từ `_register_s3`): không S3 I/O trong writer transaction, retry, fail-closed. Dùng thẳng `ObjectRepository` — không wrapper |
-| `repositories/sqlite_repository.py` | Truy cập SQLite | Bảng `observations`/`content_blobs`, revision chain, unique constraints, WAL, connection-per-op (phần SQL của `MetadataManager`). Tên nói rõ SQLite |
+| _(repository — [mục 12])_ | Truy cập SQLite | `observations`/`content_blobs`, revision chain, unique constraints, WAL, connection-per-op → **package** `repositories/catalog_repository.py` (module không còn `repositories/sqlite_repository.py`) |
 | `maintenance.py` | Migrate/reconcile local | `migrate_json`, `reconcile` (từ `catalog/maintenance.py`) |
 | `s3_maintenance.py` | Migrate/reconcile S3 | `migrate_bronze`, `reconcile_s3`, `local_inventory` (từ `catalog/s3_maintenance.py`) |
 
@@ -451,11 +506,34 @@ Quy ước: "Tác dụng" = file để làm gì (trách nhiệm); "Nội dung" =
 
 | File | Tác dụng | Nội dung |
 |---|---|---|
-| `module.py` | Wiring processing module | Đăng ký processor (`default_registry`) |
-| `contracts.py` | Hợp đồng strategy | `DatasetProcessor` Protocol, `ProcessorConfig`, `ProcessingReport` |
+| `module.py` | Wiring processing module | Đăng ký processor (`default_registry`: usdm/noaa/usgs/nldas) |
+| `contracts.py` | Hợp đồng strategy | `DatasetProcessor` Protocol (`discover`→`Readiness`), `ProcessorConfig`, `ProcessingReport` |
 | `engine.py` | Điều phối | `run_pipeline`, `ProcessorRegistry`, `default_registry` |
-| `publisher.py` | Publish sản phẩm | `file_hash`, `publish_atomic`, `product_path` (ghi-then-verify, không ghi đè payload khác) |
-| `promoter.py` | **[TÍNH NĂNG MỚI mục 11]** Auto-promote Bronze→Gold | Vòng lặp `--watch`/`--once`; đánh giá gate **G1–G6** qua service/repository hiện có (không SQL trực tiếp); gọi `run_pipeline`; idempotent + fail-closed; không chứa business logic dataset |
+| `publisher.py` | Publish sản phẩm (**re-export**) | [mục 15] re-export `medallion.publisher` (`file_hash`, `publish_atomic`, `product_path`) — một bản duy nhất |
+| `promoter.py` | **[TÍNH NĂNG MỚI mục 11]** Auto-promote Bronze→Gold | Vòng lặp `--watch`/`--once`; đánh giá gate; gọi `run_pipeline`; idempotent + fail-closed; không chứa business logic dataset |
+
+#### `medallion/` — chuẩn phân tầng Bronze→Silver→Gold (mục 15)
+
+| File | Tác dụng | Nội dung |
+|---|---|---|
+| `contracts.py` | Kiểu thuần (không IO) | `Layer`, `Readiness`, `StageResult`, `RunReport`; Protocol `Stage`/`Gate` |
+| `paths.py` | Resolve root | `MedallionPaths(source)` → `<layer>/<source>` + env `<SOURCE>_<LAYER>_ROOT` |
+| `io.py` | IO an toàn | `file_hash` (re-export `common.hashing`), `write_json_atomic`, `atomic_replace` |
+| `lock.py` | Khoá tiến trình | `exclusive_run` — 1 bản cross-platform (thay 6 bản copy) |
+| `publisher.py` | Publish bất biến | `publish_atomic` (adopt orphan, không ghi đè khác), `product_path` (layer/source/week/build/digest) |
+| `gate.py` | Eligibility | `AllOf`, `FunctionGate` |
+| `runner.py` | Orchestration | `MedallionRunner` (plan/execute theo thứ tự dưới lock, idempotent), `medallion_lock` |
+
+#### `datasets/<source>/` — plugin dataset chia tầng (mục 15)
+
+| Dataset | Module (mỗi file một việc) |
+|---|---|
+| `noaa/` | `spec` · `paths` · `validation` · `bronze` · `gate` · `silver` · `gold` · `pipeline` · `runner_cli` · `processor` |
+| `usgs/` | `paths` · `config` · `errors` · `api` · `store` · `crawl` · `validate` · `export` · `preprocess` · `grid_huc` · `manifest` · `method` · `silver` · `weekly` · `gold` · `gate` · `pipeline` · `cli` · `runner_cli` · `stage_cli` · `fill_gold` · `workflow` · `processor` |
+| `nldas/` | `spec` · `paths` · `deps` · `bronze` · `references` · `partition` · `complete` · `gate` · `silver` · `gold` · `pipeline` · `cli` · `runner_cli` · `processor` |
+| `usdm/` | `bronze` · `worker` · `publisher` · `recipe` · `warehouse` · `pipeline` · `processor` (+ `science.py`, `resources/` byte-pinned) |
+
+> `scripts/process_data/*` chỉ còn **entrypoint mỏng** gọi package (tham khảo/mẫu), không chứa science.
 
 #### `modules/portal/` — API xem/tải 3 tầng (opt-in)
 
@@ -463,17 +541,20 @@ Quy ước: "Tác dụng" = file để làm gì (trách nhiệm); "Nội dung" =
 |---|---|---|
 | `module.py` | PortalModule/wiring | `install_portal(app, config)`: middleware `portal_access`, exception handlers, include router, mount `assets`, route shell `/portal` (từ `api/portal/app.py`) |
 | `config.py` | Cấu hình Portal | `PortalConfig` (env `PORTAL_*`), validate URL/path, `callback`, `secure_cookie` |
-| `controllers/catalog.py` | Duyệt dữ liệu | `/sources`, `/datasets`, `/datasets/{did}`, `/weeks`, `/versions`, `/attempts`, `/overview` |
-| `controllers/selection.py` | Chọn & xem tầng | `POST /selections`; `.../layers/{layer}/{preview,schema,quality,lineage,map}`; `.../artifacts/{aid}/download` |
-| `controllers/admin.py` | Quản trị portal | `/admin/datasets`, `/admin/audit` (users/grants đã chuyển sang `modules/auth` + `modules/authorization`) |
+| `controllers/catalog.py` | Duyệt dữ liệu (**MỎNG**) | `/sources`, `/datasets`, `/datasets/{did}`, `/weeks`, `/versions`, `/attempts`, `/overview`; [mục 13] chỉ gọi `services/catalog.py` |
+| `controllers/selection.py` | Chọn & xem tầng (**MỎNG**) | `POST /selections`; `.../layers/{layer}/{preview,schema,quality,lineage,map}`; `.../artifacts/{aid}/download`; [mục 13] gọi `services/selection.py` |
+| `controllers/admin.py` | Quản trị portal (**MỎNG**) | `/admin/datasets`, `/admin/audit` (users/grants → `modules/auth` + `modules/authorization`); [mục 13] gọi `services/admin.py` |
 | `services/pagination.py` | Phân trang | `paginate()`, `date_range()`, ký `signature` cursor |
 | `services/release.py` | Truy cập release | `release()`/`data()` + facade `Release` |
-| `services/selection.py` | Xử lý selection | `selected()`, `table()`, `artifact_list()` |
-| `repositories/store.py` | SQLite control (portal-only) | `Store`: transient/usage/leases/audit/config (từ `api/portal/store.py`); users/sessions/grants tách sang `auth`/`authorization` |
-| `repositories/releases.py` | Release bất biến | `Release`, `prepare_release`, `verify_release`, `activate`, `contained`, `sha256`, `dataset_id` (từ `api/portal/releases.py`) |
+| `services/publish.py` | **[mục 14, MỚI]** Publish release | `prepare_release`/`copy_verified` — orchestration snapshot + lineage + copy + GIS index + activate (dời khỏi `repositories/releases.py`) |
+| `services/selection.py` | Xử lý selection | `selected()`, `table()`, `artifact_list()`; [mục 13] + luật version/observation, validate map, lease/stream/audit |
+| `services/catalog.py` | Xử lý catalog | **[mục 13, MỚI]** `overview` aggregation, `weeks`, `versions`, `attempts` (ORM `select(Attempt)` + `connection`) |
+| `services/admin.py` | Xử lý quản trị | **[mục 13, MỚI]** users/grants/audit + `precondition`/transaction/audit |
+| _(repository — [mục 12])_ | SQLite control (portal-only) | `Store`: transient/usage/leases/audit/config → **package** `repositories/control_repository.py` (module không còn `repositories/store.py`) |
+| _(repository — [mục 12, 14])_ | Release artifact store | `Release`, `verify_release`, `activate`, `snapshot`, `dataset_id`, `read_json`, `sha256` → **package** `repositories/releases.py`; `prepare_release` → `services/publish.py`; `contained` → `common/fs.py` |
 | `dto.py` | DTO portal | `SelectionInput` (+ response model); `GrantInput` → `authorization`, `UserInput` → `auth` |
 | `middleware.py` | Middleware portal | `portal_access`: request-id, demo loopback check, CSRF, content-length cap, lease preview, security/CSP headers, audit denial |
-| `errors.py` | Lỗi portal | `PortalError` + `error_response` + filter (map `RequestValidationError`→`INVALID_FILTER`) |
+| `errors.py` | Lỗi portal (HTTP) | `error_response` + filter (map `RequestValidationError`→`INVALID_FILTER`); `PortalError` re-export từ `common/errors.py` |
 | `workers/reader.py` | Đọc bounded | Gọi subprocess `read_worker.py`, timeout, map exit code → `PortalError` (từ `api/portal/reader.py`) |
 | `workers/read_worker.py` | Reader cô lập | Đọc JSON/SQLite trong subprocess, giới hạn memory/output (từ `api/portal/read_worker.py`) |
 | `workers/prepare_gis.py` | Index GIS offline | Sinh `table.json`/`map-*.json` bằng geopandas (chỉ chạy offline) |
@@ -817,6 +898,9 @@ gộp chung phase/commit với 0–7 và **chưa được giao** — cần trả
   là tính năng mới, cần chốt D11–D15 và task riêng).
 - Chuẩn hoá tầng dữ liệu sang SQLAlchemy + tách `entity/` · `repositories/` · `s3/` (mục **12**):
   **DONE** (2026-11-24) — xem bằng chứng ở mục 12.11.
+- Yêu cầu **controller mỏng → Service** (mục **13**): **DONE** (2026-11-24) — controller
+  `portal`/`ingestion`/`auth` chỉ còn gọi service; logic/ORM/transaction/audit đã chuyển vào service.
+  Xem bằng chứng ở mục 13.8.
 
 ### Bằng chứng thực thi (2026-11-24)
 
@@ -1021,15 +1105,19 @@ hiện tại (nếu chưa refactor). Không đổi tên module hiện có:
 
 | Hiện tại | Đích |
 |---|---|
-| `modules/catalog/model.py::FileMetadata` | `entity/registry.py::Observation` (+ giữ `FileMetadata` như entity-view/DTO nếu cần) |
+| `modules/catalog/model.py::FileMetadata` | `entity/view.py::FileMetadata` (+ `entity/registry.py::Observation`) — mục 14 |
 | `modules/catalog/repositories/sqlite_repository.py` (`metadata_manager`, `MetadataManager`) | `repositories/catalog_repository.py` |
 | `modules/auth/repositories/user_repository.py` + `session_repository.py` | `repositories/auth_repository.py` |
 | `modules/authorization/repositories/grant_repository.py` | `repositories/authorization_repository.py` |
 | `modules/portal/repositories/store.py` (transient/audit/config/usage/leases) | `repositories/control_repository.py` |
 | `modules/portal/repositories/releases.py` | `repositories/releases.py` |
 | SQL trong `common/middleware.py` (access.sqlite3) | `repositories/access_repository.py` |
-| SQL trong `datasets/usdm/processor.py` (warehouse.sqlite3) | `repositories/warehouse_repository.py` |
+| SQL trong `datasets/usdm/processor.py` (warehouse.sqlite3) | `repositories/warehouse_repository.py` + entity `entity/warehouse.py`; điều phối build/attempt/gold-cell → `datasets/usdm/warehouse.py` (mục 15) |
 | `modules/storage/{module,keys}.py` + `repositories/{object,minio,local}_repository.py` | `s3/{module,keys,object_repository,minio_repository,local_repository}.py` |
+
+> **Ghi chú mục 15:** checkpoint sqlite của USGS (`datasets/usgs/store.py`) và NLDAS là store tiến
+> trình cục bộ trong thư mục output của pipeline, không phải registry/warehouse nền tảng; giữ
+> sqlite3 trực tiếp như **ngoại lệ có comment lý do** (transaction/DDL được phép), không đổi semantics.
 
 ### 12.6 Thiết kế SQLAlchemy (giữ đúng semantics)
 
@@ -1113,8 +1201,276 @@ dữ liệu thật khi chưa backup.
   - `pytest -q` (tests/api, backup, infrastructure, portal, release, config, usdm; `TMPDIR` trong
     `.agents/temp/pytest-tmp`): **114 passed, 5 skipped, 3 failed** — khớp baseline; 3 fail là lỗi môi
     trường macOS (reader subprocess + `/var` symlink), không do refactor.
-  - Không chạy: `tests/integration/test_loopback.py` (thiếu sibling Client), MinIO/Compose smoke, GIS thật.
-- **Ghi chú thi hành:** catalog dùng ORM entity (`select(Entity)`/`insert`); các repository còn lại chạy
-  SQL hiện hữu qua một connection adapter SQLAlchemy (`repositories/database.py::DatabaseConnection`)
-  để giữ đúng transaction/`BEGIN IMMEDIATE` semantics; `connection()` **không** auto-commit (như
+- Không chạy: `tests/integration/test_loopback.py` (thiếu sibling Client), MinIO/Compose smoke, GIS thật.
+
+---
+
+## 14. [ĐÃ THỰC HIỆN] Dọn vi phạm phân tầng — "mỗi tầng một việc" (2026-11-24)
+
+> Dọn các điểm một "tầng" làm nhiều việc và các phụ thuộc ngược chiều (tầng dữ liệu → module
+> nghiệp vụ/HTTP). Chỉ **dời/tách** vị trí, không đổi hành vi.
+
+### 14.1 Đã sửa
+
+- `common/` nhận các helper dùng chung (không phải business): `hashing.py` (`file_hash`),
+  `fs.py` (`contained`), `security.py` (PBKDF2). Xoá 4 bản `file_hash`/`sha256` trùng ở
+  `catalog/model.py`, `processing/publisher.py`, `s3/local_repository.py`, `repositories/releases.py`.
+- `PortalError` (domain lỗi) chuyển về `common/errors.py`; `modules/portal/errors.py` chỉ còn
+  `error_response` (HTTP) và **re-export** `PortalError`. Nhờ đó `repositories/` và
+  `modules/authorization/` không còn import `modules.portal`.
+- `repositories/releases.py` chỉ còn **release artifact store** (`Release` read-model,
+  `verify_release`, `activate`, `snapshot`, `dataset_id`, `read_json`, alias `sha256`).
+  Orchestration `prepare_release` (+`copy_verified`) dời sang `modules/portal/services/publish.py`.
+- `FileMetadata` (entity view) chuyển `modules/catalog/model.py` → `entity/view.py`; xoá
+  `modules/catalog/model.py`. `repositories/` không còn import `modules.*`.
+- `s3/client.py`: factory boto3 dùng chung cho `s3/minio_repository.py` và
+  `modules/system/readiness.py` (hết nhân bản cấu hình MinIO).
+- Password hashing: `repositories/auth_repository.py` import từ `common/security.py` (không còn
+  import ngược `modules.auth.services.password`; file đó re-export).
+
+### 14.2 Bất biến (không đổi)
+
+- HTTP contract, OpenAPI schema (`FileMetadata` giữ nguyên field nên schema không đổi), object-key
+  layout, revision/ownership, transaction/upsert/audit/lease semantics, không S3 I/O trong writer
+  transaction, fail-closed. Không sửa file byte-pinned.
+
+### 14.3 Chưa làm (cố ý — cần quyết định thiết kế)
+
+- `HTTPException`/`PortalError` phát sinh **trong** `repositories/`+`s3/` cho BUSY→503 (D22) và
+  lỗi storage/ownership: giữ nguyên vì đổi sẽ chạm invariant và mapping lỗi.
+- `ObjectRepository` Protocol vs `LocalObjectRepository`: local dùng layout `sha256=.../payload`
+  khác S3 key; ép cùng interface sẽ đổi layout → để riêng, không gộp.
+- Middleware đa nhiệm (`common/middleware.py`, `portal/middleware.py`): auth/CSRF/rate-limit
+  trước multipart được giữ có chủ đích (thứ tự auth-trước-multipart là invariant).
+
+### 14.4 Bằng chứng (2026-11-24)
+
+- `ruff check --no-cache .` → All checks passed; `ruff format --check --no-cache .` → 169 files formatted.
+- `pytest -q` (tests/api, backup, infrastructure, portal, release, config, usdm; TMPDIR trong
+  `.agents/temp/pytest-tmp`): **114 passed, 5 skipped, 3 failed** — khớp baseline (3 fail môi trường macOS).
+- Import smoke: `app`, `publish`, `release`, `repositories.*`, `common.*`, `s3.client`,
+  `entity.view` import OK; `PortalError` cùng identity qua re-export; `prepare_gis.__file__` tồn tại.
+- `rg "from climate_platform.modules" src/climate_platform/repositories src/climate_platform/s3` → rỗng.
+- Không chạy: integration (thiếu sibling Client), MinIO/Compose smoke, GIS thật.
+- **Ghi chú thi hành (S1–S5):** lúc đó mới chỉ catalog dùng ORM entity (`select(Entity)`/`insert`);
+  các repository còn lại chạy SQL hiện hữu qua connection adapter SQLAlchemy
+  (`repositories/database.py::DatabaseConnection`). `connection()` **không** auto-commit (như
   `MetadataManager.connection()` gốc), còn `Store.db()`/`warehouse_repository.db()` commit khi thành công.
+  Toàn bộ SQL dạng chuỗi còn lại đã được chuyển sang ORM ở **mục 12.12**.
+
+### 12.12 [ĐÃ THỰC HIỆN] Chuẩn hoá toàn bộ truy vấn sang ORM (2026-11-24, Asia/Saigon)
+
+- **Mục tiêu:** chuyển hết truy vấn nghiệp vụ còn dạng chuỗi sang ORM SQLAlchemy 2.0; chỉ giữ lại
+  dạng thô khi là điều khiển transaction/DDL/backup hoặc process đọc tách biệt.
+- **Đã chuyển sang ORM** (dùng `select`/`insert`/`update`/`delete` trên entity; upsert qua
+  `sqlalchemy.dialects.sqlite.insert(...).on_conflict_do_update/do_nothing`):
+  - `repositories/authorization_repository.py` (grants), `repositories/auth_repository.py`
+    (users + sessions), `repositories/control_repository.py` (transient/usage/leases/audit),
+    `repositories/access_repository.py` (access accounting), `repositories/releases.py`
+    (đọc snapshot observations/builds/gold_cells + `config.active_release`).
+  - `modules/catalog/service.py` (`INSERT OR IGNORE`/`UPDATE is_current`), `modules/catalog/maintenance.py`,
+    `modules/catalog/s3_maintenance.py`.
+  - `modules/portal/controllers/admin.py`, `modules/portal/controllers/catalog.py` (attempts),
+    `modules/portal/services/release.py`, `modules/portal/workers/demo.py`.
+  - `modules/system/readiness.py` (probe đọc bảng), `datasets/usdm/processor.py` (attempts/builds/gold_cells).
+- **Giữ dạng thô (ngoại lệ có comment):** điều khiển transaction (`BEGIN`/`BEGIN IMMEDIATE`/`COMMIT`/
+  `ROLLBACK`), `PRAGMA`/`ALTER TABLE`/`CREATE VIEW`/`executescript`, SQLite backup API
+  (`repositories/releases.py::snapshot`, `repositories/database.py::backup_database`), và
+  `modules/portal/workers/read_worker.py` (subprocess `python -I`, giới hạn memory, không import nặng).
+- **Bất biến:** transaction, upsert semantics, thứ tự/so sánh kết quả và HTTP contract không đổi.
+- **Bằng chứng (2026-11-24):** `ruff check --no-cache .` → All checks passed;
+  `ruff format --check --no-cache .` → 162 files formatted; `pytest -q` (tests/api, backup,
+  infrastructure, portal, release, config, usdm; `TMPDIR` trong `.agents/temp/pytest-tmp`):
+  **114 passed, 5 skipped, 3 failed** — khớp baseline; 3 fail là lỗi môi trường macOS
+  (reader subprocess `setrlimit` + symlink), không do chuyển ORM.
+  Không chạy: `tests/integration/test_loopback.py` (thiếu sibling Client), MinIO/Compose smoke, GIS thật.
+- **Trở thành quy ước:** rule "Truy vấn dữ liệu — ORM bắt buộc" đã ghi vào `AGENTS.md`.
+
+---
+
+## 13. [YÊU CẦU NGƯỜI DÙNG — CHỜ TRIỂN KHAI] Controller mỏng — logic chỉ nằm ở Service
+
+> Yêu cầu (2026-11-24): controller **không** xử lý logic; controller **chỉ gọi Service**; Service là
+> nơi xử lý logic **đầu tiên**. Mục 0–12 đã **DONE** nhưng phần này **chưa đạt** — nhiều controller
+> còn truy vấn ORM, mở transaction, ghi audit, kiểm tra nghiệp vụ. Mục 13 ghi nhận yêu cầu và đặc tả
+> phần việc còn lại. Độc lập với auto-promote (mục 11): **không trộn** phase/commit.
+
+### 13.1 Mục tiêu
+
+Đích luồng xử lý request: **Controller → Service → Repository**.
+
+- **Controller** chỉ làm việc HTTP:
+  - nhận input **đã validate** bởi DTO/pipe (`dto.py`, `validation.py`);
+  - gọi **một** phương thức của Service (không tự xử lý nghiệp vụ khi đã có service);
+  - dựng HTTP response: status, header, cookie, `StreamingResponse`; lỗi domain map ở filter.
+  - **Cấm** trong controller: ORM (`select`/`insert`/`update`/`delete`), mở transaction
+    (`BEGIN IMMEDIATE`), business rule (role/grant/version/bbox/drought...), ghi audit, lease,
+    đọc file/hash, định nghĩa DTO/hằng số nghiệp vụ inline.
+- **Service** là nơi logic **đầu tiên**:
+  - kiểm tra nghiệp vụ + quyết định lỗi domain (`PortalError`) trên **dữ liệu thuần**;
+  - orchestration nhiều repository (`catalog`, `control`, `releases`, `s3`);
+  - sở hữu transaction (`BEGIN IMMEDIATE`...), audit, lease, và việc đọc/stream dữ liệu
+    (trả iterator/bytes cho controller đóng gói);
+  - **không** biết HTTP: không `Request`/`Response`/cookie; nhận tham số đã tách khỏi HTTP và trả
+    dict/object để controller dựng response.
+- **Repository** (`repositories/`, `s3/`): chỉ truy cập dữ liệu, không business logic (đã đúng từ mục 12).
+
+> Hệ quả: mọi endpoint phải có service tương ứng; controller không "biết" `store`/`config`/repository
+> ngoài việc chuyển cho service.
+
+### 13.2 Hiện trạng (bằng chứng — controller còn logic)
+
+| Controller hiện tại | Logic đang nằm sai chỗ | Bằng chứng (file:line) |
+|---|---|---|
+| `modules/portal/controllers/admin.py` | ORM `select(...)`; `BEGIN IMMEDIATE`; luật `ROLES`/role/grant; `precondition`; ghi audit; DTO/hằng số định nghĩa inline | `select`: 55,97,136,145,180,225; `BEGIN IMMEDIATE`: 96,135,179,205; luật: 18,72,132,169; `precondition`: 148; audit: 76,102,141,186,211; DTO inline: 30,38 |
+| `modules/portal/controllers/selection.py` | Luật chọn version/observation; validate map (bbox/drought/zoom); lease + stream + hash + audit | luật: 35,198; lease: 239,253; stream/hash/audit: 243,256,259 |
+| `modules/portal/controllers/catalog.py` | Tổng hợp `overview`; ORM `select(Attempt)` + `connection(...)`; logic weeks/versions | overview: 53; `select`+connection: 195; weeks: 108; versions: 143 |
+| `modules/ingestion/controller.py` | Kiểm tra `allowed_sources` khi list; log nghiệp vụ; map `admin→None` | 36,66,68 |
+| `modules/auth/controllers/login.py` | Dựng `session_payload`; vòng đời cookie; ghi audit logout | 9,26,44,69 |
+| `modules/system/controller.py` | **Đã mỏng** — chỉ gọi `readiness.check()` | 19 |
+| `modules/auth/controllers/session.py` | Mỏng nhưng dùng helper `session_payload` đặt trong controller | 5,14 |
+
+Ghi chú: các service hiện có (`portal/services/{pagination,release,selection}.py`,
+`auth/services/*`, `authorization/services/policy.py`) **đã tồn tại** nhưng chỉ giữ một phần logic;
+phần còn lại vẫn ở controller. Mục 13 chuyển nốt phần còn lại.
+
+### 13.3 Nguyên tắc bất biến
+
+- HTTP contract **không đổi**: path, method, status, header, cookie, body; `openapi.json` diff = 0.
+- Transaction/upsert/audit/lease semantics **không đổi** — chỉ **đổi vị trí** code.
+- Sau refactor: controller không `select(`, không `BEGIN`, không gọi `store.`/repository trực tiếp
+  ngoài việc truyền cho service; mỗi handler chỉ gọi service và dựng response.
+- Service không import `fastapi.Request/Response/HTTPException/UploadFile`; không biết cookie/header.
+
+### 13.4 Ánh xạ controller → service (theo file)
+
+| Controller | Service đích (mới/mở rộng) | Việc chuyển |
+|---|---|---|
+| `portal/controllers/admin.py` | `portal/services/admin.py` (**MỚI**) | `create_user`/`set_password`/`update_user`/`grants`/`audit`/list users → hàm service mở transaction + audit; `precondition` + validate `ROLES`/grant/version → service; DTO `CreateUserInput`/`PasswordInput` → `portal/dto.py` |
+| `portal/controllers/selection.py` | `portal/services/selection.py` (mở rộng) | luật chọn version/observation, validate map, lease/stream/audit → service trả `(selection, layers)` + iterator/đối tượng download; controller chỉ dựng `StreamingResponse` |
+| `portal/controllers/catalog.py` | `portal/services/catalog.py` (**MỚI**) | `overview` aggregation, `weeks`, `versions`, `attempts` (gồm ORM `select(Attempt)` + `connection`) → service; controller chỉ đóng gói/paginate |
+| `ingestion/controller.py` | `ingestion/service.py` (mở rộng) | kiểm `allowed_sources` khi list + map `admin→None` → service (nhận `client_id`, `source`); log nghiệp vụ về service |
+| `auth/controllers/login.py` | `auth/services/password.py`, `auth/services/session.py` (mở rộng) | `session_payload` + vòng đời logout/audit → service session; controller chỉ set/clear cookie và trả response |
+| `auth/controllers/session.py` | `auth/services/session.py` | dùng service thay vì helper trong `login.py` |
+| Các handler nhỏ còn lại trong `portal/controllers/*` | `portal/services/*` | rà `sources`, `datasets`, `dataset`, `preview/schema/quality/lineage/map` — đưa phần tổng hợp còn lại vào `services/` |
+
+> Nơi cần service mới thì tạo file trong `services/` của module tương ứng (theo mục 4.4), wiring tại
+> `module.py` (truyền `store`/`config`/`release` cho service), **không** tạo tầng mới.
+
+### 13.5 Bất biến phải giữ (như mục 2)
+
+- HTTP contract, `metadata.status`, UUID/`file_id`, ownership, revision chain: **không đổi**.
+- Audit/lease/transaction/upsert giữ nguyên hành vi (chỉ di chuyển vị trí).
+- Không đưa S3 I/O vào writer transaction; fail-closed; không đổi thứ tự auth-trước-multipart.
+- Không sửa file byte-pinned; không thêm dependency/CI.
+
+### 13.6 Phase đề xuất (mỗi phase app vẫn chạy được)
+
+| # | Nội dung | Exit criteria |
+|---|---|---|
+| C0 | Baseline: `ruff` + `pytest -q` + snapshot `openapi.json` (app + portal) | PASS + snapshot ghi lại |
+| C1 | `portal/services/admin.py` + `portal/dto.py`; làm mỏng `admin.py` | `tests/portal/test_portal.py` PASS; OpenAPI diff = 0 |
+| C2 | Mở rộng `portal/services/selection.py`; làm mỏng `selection.py` (stream → service) | cùng test; download/preview/lease semantics không đổi |
+| C3 | `portal/services/catalog.py`; làm mỏng `catalog.py` (gồm `attempts`) | cùng test; OpenAPI diff = 0 |
+| C4 | `ingestion/service.py` + `auth/services/session.py`; làm mỏng controller `ingestion`/`auth` | `tests/api/test_server.py`, `tests/portal/test_portal.py` PASS |
+| C5 | Rà soát còn lại: mọi controller không `select(`/`BEGIN`/business rule; cập nhật `docs/AGENT_MODULES.md` + mục 4.4 nếu thêm service | `grep` xác nhận; ruff + pytest PASS; OpenAPI diff = 0 |
+
+### 13.7 Rủi ro
+
+| Rủi ro | Mức | Giảm thiểu |
+|---|---|---|
+| Đổi hành vi transaction/audit khi dời vào service | Cao | Giữ nguyên câu lệnh/`BEGIN IMMEDIATE`; test duplicate/version/audit; OpenAPI diff = 0 |
+| Stream download vỡ khi tách khỏi controller | Cao | Service trả iterator + đóng resource; controller giữ `StreamingResponse`/header y hệt; test tải file |
+| Service lỡ phụ thuộc HTTP | Trung bình | Không import `fastapi.*` trong service; truyền tham số đã tách khỏi request |
+| Bỏ sót call site/test | Trung bình | Chia nhỏ theo file; chạy đúng nhóm test mỗi phase; `grep` cuối |
+
+**Rollback:** mỗi phase một commit độc lập; không `docker compose down -v`; không sửa dữ liệu thật.
+
+### 13.8 Trạng thái
+
+- Mục 13: **DONE** (2026-11-24, Asia/Saigon). Đã thực hiện C1–C5; mọi controller của
+  `portal`/`ingestion`/`auth` chỉ còn **gọi service** — không còn ORM `select`/`BEGIN IMMEDIATE`/
+  business rule/audit/lease trong controller.
+- Không phụ thuộc thứ tự với mục 11/12; **không trộn** phase/commit với refactor 0–12.
+
+### 13.9 Bằng chứng thực thi (2026-11-24)
+
+Thay đổi chính:
+- `common/pipes.py`: `RequestContext` + `request_ctx()` — view HTTP-free của request để controller
+  truyền cho service (service không import FastAPI/Starlette request).
+- `portal/services/admin.py` (**MỚI**): `AdminService` — users/grants/audit + `precondition` +
+  transaction + audit; DTO `CreateUserInput`/`PasswordInput` chuyển sang `portal/dto.py`.
+- `portal/services/catalog.py` (**MỚI**): `CatalogService` — sources/datasets/overview/weeks/
+  versions/attempts (gồm ORM `select(Attempt)` + `connection`).
+- `portal/services/selection.py` (mở rộng): `SelectionService` — create/preview/schema/quality/
+  lineage/map/download (lease/stream/hash/audit); `paginate`/`date_range`/`release.data` chuyển sang
+  `ctx` (bỏ `Request`).
+- `auth/services/session.py`: `SessionService` sở hữu login/logout/`session_payload`/audit;
+  `auth/controllers/{login,session}.py` mỏng.
+- `ingestion/service.py`: thêm `list_uploads()` (authorize + map `admin`); controller mỏng.
+- Cập nhật wiring `portal/module.py`, `auth/module.py`, `ingestion/module.py`.
+
+Bằng chứng (chạy local, macOS):
+- `ruff check --no-cache .` → All checks passed.
+- `ruff format --check --no-cache .` → 164 files already formatted.
+- `pytest -q --ignore=tests/integration/test_loopback.py` (TMPDIR trong `.agents/temp/pytest-tmp`):
+  **114 passed, 5 skipped, 3 failed** — khớp baseline; 3 fail là lỗi môi trường macOS có sẵn
+  (reader subprocess + symlink), không do mục 13.
+- **OpenAPI diff = 0**: `openapi.C13.{before,after}.json` (5 paths) và
+  `openapi.portal.C13.{before,after}.json` (30 paths) khớp byte-for-byte (sort).
+- Không chạy: `tests/integration/test_loopback.py` (thiếu sibling Client), MinIO/Compose smoke, GIS thật.
+
+---
+
+## 15. [ĐÃ THỰC HIỆN] Phân tầng pipeline Bronze→Silver→Gold — "mỗi tầng một việc" (2026-11-24)
+
+### 15.1 Mục tiêu
+
+Tách toàn bộ xử lý pipeline (Bronze→Silver→Gold + tự động hoá) khỏi `scripts/process_data/*`
+(logic nằm ở đó trước đây) thành **các tầng một-trách-nhiệm** trong package cài được, và hạ
+`scripts/*` xuống **entrypoint mỏng** (chỉ còn vai trò tham khảo/mẫu). Khớp USGS upstream
+(`../USGS_PDT`): science giữ nguyên thuật toán, chỉ đổi cách tổ chức + đường dẫn mặc định theo Server.
+
+### 15.2 Cấu trúc mới (chi tiết ở mục 4)
+
+- Package chuẩn `medallion/` (contracts · paths · io · lock · publisher · gate · runner).
+- `datasets/{noaa,usgs,nldas,usdm}/` chia `bronze`/`silver`(weekly)/`gold`/`gate`/`pipeline`/
+  `processor` mỗi file một việc; adapter `processor.py` **không còn** `sys.path.insert` vào scripts.
+- `modules/processing/contracts.DatasetProcessor.discover()` trả `Readiness` (kiểu tĩnh, bỏ dict
+  không shape); `publisher.py` re-export `medallion.publisher`; `default_registry` đăng ký
+  `usdm/noaa/usgs/nldas`.
+- `scripts/process_data/*` chỉ còn: NOAA `run_noaa_bronze_to_gold.py` (+ `crawl_noaa_cpc.py`,
+  `verify_noaa.py` tham khảo), USGS `run_usgs.py`/`run_usgs_bronze_to_gold.py`, NLDAS
+  `create_silver.py`/`create_gold.py`/`run_bronze_to_gold.py`, USDM `run_usdm.py`/`verify_usdm.py`.
+
+### 15.3 Bốn nhóm vấn đề đã sửa
+
+1. **Đảo phụ thuộc:** `datasets/*/processor.py` không còn import động `scripts/`; package sở hữu
+   logic, scripts import package.
+2. **Module ôm nhiều việc:** tách `usgs` (core/medallion/auto/preprocess/_common), `nldas`
+   (nldas_common), `noaa` (noaa_common) và `datasets/usdm/processor.py` (350 dòng) thành module
+   một-việc.
+3. **Tên vô nghĩa:** bỏ `auto`/`common`/`core`; auto-runner gom về `pipeline.py` + `runner_cli.py`;
+   `medallion` hoá publication/lineage.
+4. **Trùng lặp + publisher bị bypass:** lock OS + atomic-json + sha256 về `medallion.lock`/`io`
+   (một bản); USDM publish qua `medallion.publisher.publish_atomic`/`product_path`.
+
+### 15.4 Bất biến (không đổi)
+
+Thuật toán science, hash semantics, revision/lineage, object-key layout, HTTP contract, JSON report
+shape của CLI (giữ khoá cũ trong `details`). Byte-pinned `usdm/science.py` + `usdm/resources/`
+không sửa/format. Checkpoint sqlite cục bộ của USGS/NLDAS giữ sqlite3 (ngoại lệ có comment).
+
+### 15.5 Bằng chứng (chạy local, macOS)
+
+- `ruff check --no-cache .` → All checks passed.
+- `ruff format --check --no-cache .` → 223 files already formatted.
+- `pytest -q --ignore=tests/integration --ignore=tests/portal` → **104 passed, 5 skipped**.
+- `pytest -q tests/usdm/test_usdm.py` → **12 passed** (test đổi import `processor`→`pipeline` cho
+  monkeypatch; assertion không đổi).
+- `pytest -q tests/config tests/medallion` → 16 passed (gồm `WORKER` recipe hash bất biến).
+- Import smoke: `default_registry().sources() == ('nldas','noaa','usdm','usgs')`; NOAA thin CLI
+  `--dry-run --json` end-to-end; `compileall` toàn bộ `datasets/{noaa,usgs,nldas,usdm}` + scripts PASS.
+- **Không chạy:** `tests/integration/test_loopback.py` (thiếu sibling Client); `tests/portal/*` — lỗi
+  môi trường macOS có sẵn (symlink `/var`→`/private/var`, như §13); dữ liệu thật
+  (thiếu Bronze/`USGS_API_KEY` và pyarrow/geopandas/xarray trong venv này).

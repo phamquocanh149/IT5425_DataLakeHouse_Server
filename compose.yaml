@@ -50,7 +50,7 @@ services:
     cap_drop:
       - ALL
   minio:
-    image: noname12346767/my-minio
+    image: ${MINIO_IMAGE:-noname12346767/my-minio}
     pull_policy: ${MINIO_PULL_POLICY:-missing}
     command: ["server", "/data", "--console-address", ":9001"]
     restart: unless-stopped
@@ -71,7 +71,7 @@ services:
     security_opt:
       - no-new-privileges:true
   minio-init:
-    image: noname12346767/mc-allos
+    image: ${MINIO_MC_IMAGE:-noname12346767/mc-allos}
     pull_policy: ${MINIO_PULL_POLICY:-missing}
     depends_on:
       minio:

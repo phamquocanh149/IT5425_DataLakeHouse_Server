@@ -611,3 +611,73 @@ def test_unverified_current_never_uses_old_revision(portal):
     info_path.write_text(json.dumps(info))
     login(portal)
     assert selection(portal).json()["layers"]["bronze"]["availability"] == "unavailable"
+
+
+def test_login_password_length_is_bounded(portal):
+    oversized = portal["client"].post(
+        "/api/portal/v1/auth/login",
+        json={"username": "viewer", "password": "x" * 4096},
+    )
+    assert oversized.status_code == 422
+
+
+def test_unknown_user_still_runs_password_verification(portal, monkeypatch):
+    import climate_platform.repositories.auth_repository as auth_repo
+    from climate_platform.modules.portal.errors import PortalError
+
+    calls = []
+    real_verify = auth_repo.verify_password
+
+    def spy(password, stored):
+        calls.append(stored)
+        return real_verify(password, stored)
+
+    monkeypatch.setattr(auth_repo, "verify_password", spy)
+    with pytest.raises(PortalError):
+        portal["store"].authenticate("ghost-user", "whatever")
+    assert calls, "verify_password must run even for an unknown user (no timing oracle)"
+
+
+def test_password_reset_revokes_existing_sessions(portal):
+    store = portal["store"]
+    login(portal, username="admin", role="Admin", layers=())
+    viewer = store.ensure_user("viewer", "secret123", "viewer")
+    store.start_session(viewer["user_id"])
+
+    def session_count():
+        with store.db() as db:
+            return db.execute(
+                "SELECT count(*) AS n FROM sessions WHERE user_id=?", (viewer["user_id"],)
+            ).fetchone()["n"]
+
+    assert session_count() == 1
+    url = f"/api/portal/v1/admin/users/{viewer['user_id']}/password"
+    reset = portal["client"].put(
+        url, json={"password": "brandnew123"}, headers={"If-Match": str(viewer["version"])}
+    )
+    assert reset.status_code == 204
+    assert session_count() == 0
+
+
+def test_session_touch_is_throttled(portal):
+    store = portal["store"]
+    user = store.ensure_user("touch", "secret123", "touch")
+    token = store.start_session(user["user_id"])
+    hashed = token_hash(token)
+
+    def last_used():
+        with store.db() as db:
+            return db.execute("SELECT last_used FROM sessions WHERE token=?", (hashed,)).fetchone()[
+                "last_used"
+            ]
+
+    with store.db() as db:
+        db.execute("UPDATE sessions SET last_used=? WHERE token=?", (time.time() - 5, hashed))
+    before = last_used()
+    cfg = portal["cfg"]
+    cfg.session_touch_seconds = 3600
+    store.session(token, cfg)
+    assert last_used() == before  # not refreshed inside the touch window
+    cfg.session_touch_seconds = 0
+    store.session(token, cfg)
+    assert last_used() > before  # refreshed once the window elapses

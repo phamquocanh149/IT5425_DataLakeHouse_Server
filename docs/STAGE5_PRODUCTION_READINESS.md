@@ -182,9 +182,10 @@ There is no CI/CD pipeline. Run this validation locally before accepting a relea
   different image and assume the prior tests/scan cover it. Local artifact retention is
   an operator decision, not a substitute for the long-term disaster recovery archive.
 
-Set `MINIO_DIGEST`/`MINIO_MC_DIGEST` in the local environment to verified official
-artifacts before Compose smoke. No hosted workflow or branch-protection setting is used;
-do not add CI/CD. Publishing/deployment is not automated or authorized by this change.
+Set `MINIO_IMAGE`/`MINIO_MC_IMAGE` in the local environment to the digest-pinned
+source-built MinIO and mc images before Compose smoke. No hosted workflow or
+branch-protection setting is used; do not add CI/CD. Publishing/deployment is not
+automated or authorized by this change.
 
 Local commands when dependencies are already available:
 
@@ -196,6 +197,8 @@ $env:USDM_GIS_PYTHON='E:/anaconda/python.exe'
 .venv/Scripts/python.exe -m ruff check --no-cache .
 .venv/Scripts/python.exe -m ruff format --check --no-cache .
 # Docker Linux and exact images must be available for these commands:
+$env:MINIO_IMAGE='noname12346767/my-minio@sha256:<64 hex>'
+$env:MINIO_MC_IMAGE='noname12346767/mc-allos@sha256:<64 hex>'
 .venv/Scripts/python.exe scripts/release/verify_images.py --api-image <api-image> --worker-image <worker-image>
 $env:CLIMATE_API_IMAGE='<api-image>'
 $env:CLIMATE_WORKER_IMAGE='<worker-image>'

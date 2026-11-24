@@ -36,6 +36,10 @@ Chuyển từ chia theo layer sang **feature modules**: mỗi bounded context l�
 (truy cập dữ liệu) · `dto` (schema) · `guards`. Composition root ở `app.py` (AppModule);
 `config.py` giữ nguyên (ConfigModule). Không đổi hành vi HTTP/schema/hash/revision/object-key.
 
+**Controller mỏng (mục 13 REFACTOR.MD):** controller chỉ nhận request → gọi **service** → dựng
+response; business logic/ORM/transaction/audit nằm ở `service` (service là nơi xử lý logic đầu
+tiên). Service không import FastAPI/Starlette request (controller truyền `common.pipes.RequestContext`).
+
 | Trước (`src/climate_platform/`) | Sau (`src/climate_platform/`) |
 |---|---|
 | `api/app.py` | `app.py` (AppModule, uvicorn target) |
@@ -46,7 +50,7 @@ Chuyển từ chia theo layer sang **feature modules**: mỗi bounded context l�
 | `infrastructure/object_store.py` | `s3/minio_repository.py` + `s3/keys.py` (cấp package) |
 | `ingestion/*` | `modules/ingestion/*` |
 | `catalog/repository.py` (SQL) | `repositories/catalog_repository.py` (SQLAlchemy) + entity `entity/registry.py` |
-| `catalog/repository.py` (`FileMetadata`, `file_hash`) | `modules/catalog/model.py` |
+| `catalog/repository.py` (`FileMetadata`, `file_hash`) | `entity/view.py` + `common/hashing.py` |
 | `catalog/repository.py::_register_s3` | `modules/catalog/service.py` |
 | `catalog/{maintenance,s3_maintenance}.py` | `modules/catalog/*` |
 | `processing/*` | `modules/processing/*` |
@@ -60,6 +64,38 @@ Chuyển từ chia theo layer sang **feature modules**: mỗi bounded context l�
 Guard: xác thực ở `modules/auth/guards.py`; phân quyền (role/grant/source) ở
 `modules/authorization/guards/`, export qua `modules/authorization/module.py`.
 Gate/phase chi tiết: [plans/REFACTOR.MD](plans/REFACTOR.MD).
+
+**Dọn vi phạm phân tầng (2026-11-24, mục 14 plan):** helper dùng chung (`file_hash`, `contained`,
+PBKDF2 password) và domain error `PortalError` nay ở `common/`; `prepare_release` dời sang
+`modules/portal/services/publish.py` (nên `repositories/releases.py` chỉ còn release artifact
+store); `FileMetadata` ở `entity/view.py` (xoá `modules/catalog/model.py`); factory S3 client ở
+`s3/client.py` dùng chung cho repo + readiness. `repositories/` và `s3/` **không** còn import
+`modules.*`. Không đổi hành vi HTTP/schema.
+
+## Refactor — Medallion layering Bronze→Silver→Gold (2026-11-24)
+
+Tách xử lý pipeline khỏi `scripts/process_data/*` thành các tầng **một-trách-nhiệm** trong
+package cài được; scripts chỉ còn entrypoint mỏng (tham khảo). Chi tiết + bằng chứng:
+[plans/REFACTOR.MD §15](plans/REFACTOR.MD).
+
+- **`src/climate_platform/medallion/`** (dùng chung): `contracts` (Layer/Readiness/StageResult/
+  RunReport + Protocol Stage/Gate) · `paths` (root theo source+layer) · `io` (file_hash/
+  write_json_atomic) · `lock` (exclusive_run — một bản) · `publisher` (publish_atomic/product_path)
+  · `gate` (AllOf) · `runner` (MedallionRunner).
+- **`datasets/<source>/`** mỗi file một việc:
+  - `noaa/`: spec · paths · validation · bronze · gate · silver · gold · pipeline · runner_cli · processor
+  - `usgs/`: paths · config · errors · api · store · crawl · validate · export · preprocess · daily · grid_huc ·
+    manifest · method · silver · weekly · aggregate · gold · gold_validate · gate · pipeline · cli · runner_cli · stage_cli · workflow · processor
+  - `nldas/`: spec · paths · deps · bronze · references · partition · complete · gate · silver · gold ·
+    pipeline · cli · runner_cli · processor
+  - `usdm/`: bronze · worker · publisher · recipe · warehouse · pipeline · processor (+ `science.py`, `resources/` byte-pinned)
+- `modules/processing/contracts.DatasetProcessor.discover()` trả `Readiness`; `publisher.py` re-export
+  `medallion.publisher`; `default_registry` đăng ký `usdm/noaa/usgs/nldas`.
+- Adapter `datasets/*/processor.py` **không còn** `sys.path.insert` vào `scripts/` — package sở hữu
+  logic. Checkpoint sqlite cục bộ của USGS/NLDAS giữ sqlite3 (ngoại lệ có comment: store tiến trình,
+  không phải registry/warehouse nền tảng).
+- Thuật toán science/hash/revision/lineage/object-key/HTTP contract không đổi; `usdm/science.py` +
+  `usdm/resources/` byte-pinned không format/lint.
 
 ## Stage 4 — Data Portal: Implemented local, Pending UAT
 
@@ -105,6 +141,37 @@ ownership, revision semantics hoặc dependency runtime của FastAPI.
   collector. Owner cố định `usdm-replay`, dataset key `usdm/gis/CONUS/M/weekly`.
 - `scripts/process_data/usdm/verify_usdm.py`: kiểm tra source/output hashes và đối chiếu Gold,
   chỉ chọn build mới nhất của observation VERIFIED/current theo registry.
+
+## Stage 3 — mở rộng nguồn NOAA/USGS (2026-11-24)
+
+Thêm hai nguồn ngoài USDM vào tầng xử lý Bronze → Silver → Gold và cơ chế tự động "chạy khi
+đủ điều kiện" (idempotent, bỏ qua phần đã hoàn thành, có OS lock + report JSON). Pipeline khoa
+học giữ nguyên; không thêm upstream downloader vào runtime FastAPI.
+
+> **Cập nhật (Medallion layering, 2026-11-24):** logic dưới đây nay nằm trong package
+> `src/climate_platform/datasets/{noaa,usgs,nldas}/` (mỗi tầng một module); các đường dẫn
+> `scripts/process_data/*` chỉ còn entrypoint mỏng. Xem mục "Refactor — Medallion layering" ở trên.
+
+- `scripts/process_data/noaa/run_noaa_bronze_to_gold.py`: auto-runner NOAA. Điều kiện đủ là
+  snapshot Bronze mới nhất có `_manifest.json` và đủ 3 CSV daily + `wksst9120.for`; build Silver
+  khi thiếu, build Gold khi có Silver và lịch USDM (`--week-dates-csv`/`--usdm-csv`). Hỗ trợ
+  `--dry-run`, `--json`, `--report`, `--overwrite`; `--lock-file` mặc định
+  `data_lake/temp/noaa_medallion.lock`.
+- `scripts/process_data/noaa/noaa_common.py`: thêm `write_json_atomic`, `exclusive_run`,
+  `snapshot_complete`, `default_lock_file` dùng chung cho auto-runner.
+- `scripts/process_data/noaa/noaa_silver_to_gold.py`: tách thân `main()` thành `build_outputs(...)`
+  để runner gọi trực tiếp; CLI giữ nguyên hành vi (in report JSON).
+- `scripts/process_data/usgs/run_usgs_bronze_to_gold.py` + `usgs_pipeline/auto.py`: auto-runner USGS.
+  Điều kiện đủ là `validate()` (không unplanned/unresolved job) và `audit_raw()` PASS; build lần
+  lượt Silver → Weekly → Gold, mỗi stage bỏ qua khi đã có run hoàn thành cho upstream hiện tại.
+  Thêm lệnh `auto` cho `usgs_pipeline/cli.py` (`python .../run_usgs.py auto`).
+- `datasets/noaa/processor.py` (`NoaaProcessor`) và `datasets/usgs/processor.py` (`UsgsProcessor`):
+  adapter mỏng cho processing engine, tải module runner từ checkout (`CHECKOUT_ROOT`) khi được gọi;
+  `discover()` trả readiness, `run()` trả `ProcessingReport`. `default_registry()` đăng ký
+  `usdm`, `noaa`, `usgs`; NLDAS chưa build.
+
+Kiểm chứng local: `ruff check`, `ruff format --check` + import smoke (chưa chạy data thật vì cần
+Bronze/USGS API key). NLDAS vẫn theo mẫu `scripts/process_data/nldas/run_bronze_to_gold.py`.
 
 ## Lưu trữ và retry
 

@@ -10,10 +10,10 @@ import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
-from climate_platform.catalog.maintenance import migrate_json  # noqa: E402
-from climate_platform.catalog.repository import (  # noqa: E402
-    FileMetadata,
-    file_hash,
+from climate_platform.common.hashing import file_hash  # noqa: E402
+from climate_platform.modules.catalog.maintenance import migrate_json  # noqa: E402
+from climate_platform.entity.view import FileMetadata  # noqa: E402
+from climate_platform.repositories.catalog_repository import (  # noqa: E402
     metadata_manager,
 )
 from climate_platform.config import settings  # noqa: E402
