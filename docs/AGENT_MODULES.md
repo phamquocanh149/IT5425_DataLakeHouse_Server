@@ -84,8 +84,8 @@ package cài được; scripts chỉ còn entrypoint mỏng (tham khảo). Chi t
   · `gate` (AllOf) · `runner` (MedallionRunner).
 - **`datasets/<source>/`** mỗi file một việc:
   - `noaa/`: spec · paths · validation · bronze · gate · silver · gold · pipeline · runner_cli · processor
-  - `usgs/`: paths · config · errors · api · store · crawl · validate · export · preprocess · daily · grid_huc ·
-    manifest · method · silver · weekly · aggregate · gold · gold_validate · gate · pipeline · cli · runner_cli · stage_cli · workflow · processor
+  - `usgs/`: bronze · paths · config · errors · store · validate · export · preprocess · daily · grid_huc ·
+    manifest · method · silver · weekly · aggregate · gold · gold_validate · gate · pipeline · runner_cli · stage_cli · processor
   - `nldas/`: spec · paths · deps · bronze · references · partition · complete · gate · silver · gold ·
     pipeline · cli · runner_cli · processor
   - `usdm/`: bronze · worker · publisher · recipe · warehouse · pipeline · processor (+ `science.py`, `resources/` byte-pinned)
@@ -94,6 +94,12 @@ package cài được; scripts chỉ còn entrypoint mỏng (tham khảo). Chi t
 - Adapter `datasets/*/processor.py` **không còn** `sys.path.insert` vào `scripts/` — package sở hữu
   logic. Checkpoint sqlite cục bộ của USGS/NLDAS giữ sqlite3 (ngoại lệ có comment: store tiến trình,
   không phải registry/warehouse nền tảng).
+- **USGS Bronze đến từ Client.** Server không crawl upstream: `datasets/usgs/` chỉ đọc Bronze do
+  Client cung cấp (`bronze.py` giữ schema Parquet chuẩn hoá; `store.py` đọc `checkpoint.sqlite`;
+  `validate.py`/`gate.py` đánh giá đủ điều kiện trên Bronze đó). Crawler chỉ còn là tham khảo ở
+  `scripts/process_data/usgs/crawl_usgs.py` (CLI `run_usgs.py`), cùng mẫu với
+  `scripts/process_data/noaa/crawl_noaa_cpc.py`. Bốn nguồn `usdm/noaa/usgs/nldas` đều theo luồng
+  lấy dữ liệu từ Client; nguồn nào không có crawler tham khảo thì giữ nguyên.
 - Thuật toán science/hash/revision/lineage/object-key/HTTP contract không đổi; `usdm/science.py` +
   `usdm/resources/` byte-pinned không format/lint.
 

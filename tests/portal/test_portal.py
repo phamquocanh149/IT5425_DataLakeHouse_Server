@@ -681,3 +681,20 @@ def test_session_touch_is_throttled(portal):
     cfg.session_touch_seconds = 0
     store.session(token, cfg)
     assert last_used() > before  # refreshed once the window elapses
+
+
+def test_logout_is_idempotent_without_session(portal):
+    login(portal)
+    c = portal["client"]
+    assert c.post("/api/portal/v1/auth/logout").status_code == 204
+    # The cookie is gone; logout must still succeed so the browser can always clear it.
+    assert c.post("/api/portal/v1/auth/logout").status_code == 204
+    assert c.get("/api/portal/v1/session").status_code == 401
+
+
+def test_public_login_body_is_capped(portal):
+    # An oversized unauthenticated login body is rejected before any password work runs.
+    response = portal["client"].post(
+        "/api/portal/v1/auth/login", json={"username": "nobody", "password": "x" * 20000}
+    )
+    assert response.status_code == 413

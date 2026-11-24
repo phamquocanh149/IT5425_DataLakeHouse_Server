@@ -57,7 +57,7 @@ File này chỉ giữ **rules/convention** để làm việc trong repo. Plan, r
   │   │   ├── nldas/             # NLDAS: create_silver/create_gold/run_bronze_to_gold (thin)
   │   │   ├── noaa/              # NOAA: run_noaa_bronze_to_gold (thin) + crawl/verify (ref)
   │   │   ├── usdm/              # CLI replay/verify USDM (thin)
-  │   │   └── usgs/              # USGS: run_usgs/run_usgs_bronze_to_gold (thin)
+  │   │   └── usgs/              # USGS: crawl_usgs (crawl ref) + run_usgs/run_usgs_bronze_to_gold
   │   ├── release/               # Gate release: GIS report và image scan
   │   └── smoke/                 # Smoke test và fault assertions
   ├── src/climate_platform/      # Backend Python, package cài được (không còn server/)
@@ -77,7 +77,7 @@ File này chỉ giữ **rules/convention** để làm việc trong repo. Plan, r
   │   │   └── portal/            # Portal API (opt-in)
   │   └── datasets/              # Plugin dataset — mỗi dataset chia tầng một-việc
   │       ├── noaa/              # spec/paths/validation/bronze/gate/silver/gold/pipeline/processor
-  │       ├── usgs/              # crawl/silver/weekly/gold/manifest/pipeline/processor (+ API, store)
+  │       ├── usgs/              # bronze/config/store/validate/preprocess/export/silver/weekly/gold/gate/pipeline/processor (Bronze từ Client)
   │       ├── nldas/             # bronze/silver/gold/gate/pipeline/processor
   │       └── usdm/              # bronze/worker/publisher/recipe/warehouse/pipeline/processor (+ science/resources byte-pinned)
   ├── tests/                     # Unit/component tests và integration/
