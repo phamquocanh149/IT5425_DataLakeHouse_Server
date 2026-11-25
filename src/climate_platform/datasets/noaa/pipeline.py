@@ -95,6 +95,7 @@ def plan(ctx: NoaaContext) -> RunReport:
             "gold_root": str(Path(ctx.gold_root).resolve()),
             "snapshot": str(snapshot),
             "calendar": calendar_label,
+            "calendar_ok": calendar_ok,
             "silver_present": silver_present,
             "gold_present": gold_present,
         },
@@ -135,6 +136,7 @@ def execute(ctx: NoaaContext, report: RunReport, log=logger.info) -> RunReport:
         report.details["silver_present"] = silver_present
         report.details["gold_present"] = gold_present
         report.details["calendar"] = calendar_label
+        report.details["calendar_ok"] = calendar_ok
         # Gold must never be built from a Silver layer that is incomplete or that just failed.
         gold_eligible = bool(
             report.ready

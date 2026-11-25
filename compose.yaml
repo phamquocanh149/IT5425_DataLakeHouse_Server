@@ -1,3 +1,23 @@
+x-medallion-environment: &medallion-environment
+  SERVICE_MODE: worker
+  BASE_DIR: /storage
+  METADATA_DIR: metadata
+  SCRATCH_DIR: /worker-cache
+  STORAGE_BACKEND: s3
+  S3_ENDPOINT: http://minio:9000
+  S3_REGION: ${S3_REGION:-us-east-1}
+  S3_BUCKET_BRONZE: ${S3_BUCKET_BRONZE:-climate-bronze}
+  S3_BUCKET_SILVER: ${S3_BUCKET_SILVER:-climate-silver}
+  S3_BUCKET_GOLD: ${S3_BUCKET_GOLD:-climate-gold}
+  S3_ACCESS_KEY: ${MEDALLION_S3_ACCESS_KEY:-climate-worker}
+  S3_SECRET_KEY: ${MEDALLION_S3_SECRET_KEY:-${MINIO_ROOT_PASSWORD}}
+  MEDALLION_S3_ACCESS_KEY: ${MEDALLION_S3_ACCESS_KEY:-climate-worker}
+  MEDALLION_S3_SECRET_KEY: ${MEDALLION_S3_SECRET_KEY:?Set MEDALLION_S3_SECRET_KEY}
+  MEDALLION_PUBLISH_CACHE_ROOT: /worker-cache
+  USDM_GIS_PYTHON: /usr/local/bin/python
+  DAGSTER_HOME: /dagster-home
+  HOME: /dagster-home
+
 services:
   api:
     build: .
@@ -87,13 +107,117 @@ services:
       S3_BUCKET_SILVER: ${S3_BUCKET_SILVER:-climate-silver}
       S3_BUCKET_GOLD: ${S3_BUCKET_GOLD:-climate-gold}
       S3_BUCKET_WAREHOUSE: ${S3_BUCKET_WAREHOUSE:-climate-warehouse}
+      MEDALLION_S3_ACCESS_KEY: ${MEDALLION_S3_ACCESS_KEY:-climate-worker}
+      MEDALLION_S3_SECRET_KEY: ${MEDALLION_S3_SECRET_KEY:?Set MEDALLION_S3_SECRET_KEY}
     volumes:
       - ./scripts/ops/minio-init.sh:/init/minio-init.sh:ro
     tmpfs:
       - /tmp
     security_opt:
       - no-new-privileges:true
+  dagster-code:
+    build:
+      context: .
+      dockerfile: Dockerfile.medallion-worker
+    image: ${CLIMATE_MEDALLION_WORKER_IMAGE:-climate-platform-medallion-worker:latest}
+    pull_policy: ${MEDALLION_WORKER_PULL_POLICY:-build}
+    restart: unless-stopped
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+      api:
+        condition: service_healthy
+    environment: *medallion-environment
+    volumes:
+      - registry:/storage/metadata
+      - medallion-cache:/worker-cache
+      - dagster-home:/dagster-home
+    command:
+      - dagster
+      - code-server
+      - start
+      - -h
+      - 0.0.0.0
+      - -p
+      - "4000"
+      - -f
+      - /app/src/climate_platform/orchestration/definitions.py
+    expose:
+      - "4000"
+    cpus: 2.0
+    mem_limit: 4g
+    pids_limit: 200
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+  dagster-webserver:
+    build:
+      context: .
+      dockerfile: Dockerfile.medallion-worker
+    image: ${CLIMATE_MEDALLION_WORKER_IMAGE:-climate-platform-medallion-worker:latest}
+    pull_policy: ${MEDALLION_WORKER_PULL_POLICY:-build}
+    restart: unless-stopped
+    depends_on:
+      dagster-code:
+        condition: service_started
+    environment:
+      DAGSTER_HOME: /dagster-home
+    volumes:
+      - dagster-home:/dagster-home
+      - ./deploy/dagster/dagster.yaml:/dagster-home/dagster.yaml:ro
+      - ./deploy/dagster/workspace.yaml:/dagster-home/workspace.yaml:ro
+    ports:
+      - "127.0.0.1:${DAGSTER_PORT:-3000}:3000"
+    command:
+      - dagster-webserver
+      - -h
+      - 0.0.0.0
+      - -p
+      - "3000"
+      - -w
+      - /dagster-home/workspace.yaml
+    cpus: 1.0
+    mem_limit: 1g
+    pids_limit: 100
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+  dagster-daemon:
+    build:
+      context: .
+      dockerfile: Dockerfile.medallion-worker
+    image: ${CLIMATE_MEDALLION_WORKER_IMAGE:-climate-platform-medallion-worker:latest}
+    pull_policy: ${MEDALLION_WORKER_PULL_POLICY:-build}
+    restart: unless-stopped
+    depends_on:
+      dagster-code:
+        condition: service_started
+      api:
+        condition: service_healthy
+    environment: *medallion-environment
+    volumes:
+      - registry:/storage/metadata
+      - medallion-cache:/worker-cache
+      - dagster-home:/dagster-home
+      - ./deploy/dagster/dagster.yaml:/dagster-home/dagster.yaml:ro
+      - ./deploy/dagster/workspace.yaml:/dagster-home/workspace.yaml:ro
+    command:
+      - dagster-daemon
+      - run
+      - -w
+      - /dagster-home/workspace.yaml
+    cpus: 2.0
+    mem_limit: 4g
+    pids_limit: 200
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 volumes:
   bronze:
   registry:
   minio-data:
+  medallion-cache:
+  dagster-home:

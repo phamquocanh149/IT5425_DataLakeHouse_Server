@@ -49,7 +49,9 @@ def exclusive_run(root):
         yield
 
 
-def run_pipeline(source, root, python, start=None, end=None):
+def run_pipeline(source, root, python, start=None, end=None, records=None):
+    """Run the replay. ``records`` maps a source date to the Bronze record already stored
+    for an automatic publish, so the caller's upload is reused instead of re-registered."""
     source, root = Path(source).resolve(), Path(root).resolve()
     if source == root or source in root.parents or root in source.parents:
         raise ValueError("Pipeline output and source must be disjoint")
@@ -63,12 +65,13 @@ def run_pipeline(source, root, python, start=None, end=None):
     weeks = discover(source, start, end)
     root.mkdir(parents=True, exist_ok=True)
     with exclusive_run(root):
-        return _run(source, root, python, weeks)
+        return _run(source, root, python, weeks, records)
 
 
-def _run(source, root, python, weeks):
+def _run(source, root, python, weeks, records=None):
+    records = dict(records or {})
     manager = CatalogService(MetadataManager(), object_repository)
-    manager.initialize()
+    manager.initialize_once()
     catalog = root / "warehouse.sqlite3"
     initialize_catalog(catalog)
     report = {"succeeded": 0, "skipped": 0, "failed": 0, "weeks": []}
@@ -78,7 +81,17 @@ def _run(source, root, python, weeks):
         for day, shp in weeks.items():
             try:
                 status = process_week(
-                    manager, catalog, root, work, python, cleaner, grid, recipe, day, shp
+                    manager,
+                    catalog,
+                    root,
+                    work,
+                    python,
+                    cleaner,
+                    grid,
+                    recipe,
+                    day,
+                    shp,
+                    record=records.get(day),
                 )
                 report[status] += 1
                 detail = ""
@@ -96,7 +109,9 @@ def _run(source, root, python, weeks):
     return report
 
 
-def process_week(manager, catalog, root, work, python, cleaner, grid, recipe, day, shp):
+def process_week(
+    manager, catalog, root, work, python, cleaner, grid, recipe, day, shp, record=None
+):
     with tempfile.TemporaryDirectory(dir=work, prefix=day) as directory:
         stage = Path(directory)
         raw = stage / (shp.stem + "_M.zip")
@@ -104,16 +119,30 @@ def process_week(manager, catalog, root, work, python, cleaner, grid, recipe, da
         size, sha = raw.stat().st_size, file_hash(raw)
         if size > settings.MAX_FILE_SIZE_BYTES:
             raise ValueError("USDM package exceeds configured ingestion limit")
-        record, _ = manager.register_upload(
-            raw, "usdm", day, DATASET_KEY, raw.name, "usdm-replay", sha, size
-        )
-        identity = {"file_id": record.file_id, "raw_sha256": sha, "recipe": recipe}
+        reused = record is not None
+        if not reused:
+            # Offline replay owns the rows it registers; the auto flow reuses the Client
+            # record instead, because re-registering under a replay identity is rejected.
+            record, _ = manager.register_upload(
+                raw, "usdm", day, DATASET_KEY, raw.name, "usdm-replay", sha, size
+            )
+            identity = {"file_id": record.file_id, "raw_sha256": sha, "recipe": recipe}
+            raw_sha = sha
+        else:
+            identity = {
+                "file_id": record.file_id,
+                "raw_sha256": record.sha256,
+                "package_sha256": sha,
+                "recipe": recipe,
+            }
+            raw_sha = record.sha256
         build = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
         existing = existing_manifest(catalog, build)
         if existing:
             verify_products(root, existing)
             return "skipped"
-        materialize_raw(manager, record, raw)
+        if not reused:
+            materialize_raw(manager, record, raw)
         run_worker(
             python,
             ["--cleaner", cleaner, "--raw", raw, "--day", day, "--grid", grid, "--output", stage],
@@ -129,5 +158,5 @@ def process_week(manager, catalog, root, work, python, cleaner, grid, recipe, da
         verify_products(root, manifest)
         # All artifacts exist before the single atomic warehouse commit. An interrupted
         # build leaves unreferenced files which a retry can verify and adopt.
-        commit_build(catalog, build, record, day, sha, manifest, stage / "gold.csv")
+        commit_build(catalog, build, record, day, raw_sha, manifest, stage / "gold.csv")
         return "succeeded"

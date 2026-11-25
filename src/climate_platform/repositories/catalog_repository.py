@@ -8,6 +8,7 @@ Only SQL and the local-registry commit path live here; object storage is handled
 from __future__ import annotations
 
 import logging
+import threading
 import uuid
 from datetime import datetime, timezone
 
@@ -26,6 +27,8 @@ from climate_platform.repositories.database import (
 from climate_platform.s3.local_repository import LocalObjectRepository
 
 logger = logging.getLogger("climate_platform.catalog")
+_INITIALIZED_DATABASES = set()
+_INITIALIZE_LOCK = threading.Lock()
 
 
 class MetadataManager:
@@ -64,6 +67,15 @@ class MetadataManager:
                     db.execute(f"ALTER TABLE observations ADD COLUMN {column} TEXT")
             db.execute("PRAGMA user_version=1")
             db.commit()
+
+    def initialize_once(self):
+        """Run schema creation/migration once per database path in this process."""
+        path = str(self.db_path.resolve())
+        with _INITIALIZE_LOCK:
+            if path in _INITIALIZED_DATABASES:
+                return
+            self.initialize()
+            _INITIALIZED_DATABASES.add(path)
 
     def connection(self):
         """Open an existing registry; requests never create or migrate schema."""
@@ -225,14 +237,15 @@ class MetadataManager:
             )
             return FileMetadata(**dict(row)) if row else None
 
-    def list_all(self, source_filter=None, client_id=None, sources=None):
+    def list_all(self, source_filter=None, client_id=None, sources=None, *, read_only=False):
         statement = select(Observation)
         if source_filter:
             statement = statement.where(Observation.source == source_filter)
         if client_id:
             statement = statement.where(Observation.client_id == client_id)
         statement = statement.order_by(Observation.received_at.desc())
-        with self.connection() as db:
+        mode = "ro" if read_only else "rw"
+        with db_connection(self.db_path, mode=mode) as db:
             rows = [dict(row) for row in db.execute(statement).mappings().all()]
         return [FileMetadata(**row) for row in rows if sources is None or row["source"] in sources]
 

@@ -20,6 +20,9 @@ HERE = Path(__file__).resolve()
 SERVER_ROOT = Path(settings.BASE_DIR)
 WORKSPACE = HERE.parents[4]
 DUY_ROOT = WORKSPACE / "duy-nldas-script"
+# Reference grid/calendar shipped inside the package so an installed/worker runtime is
+# self-contained (the workspace copy is only a development convenience).
+RESOURCES = HERE.parent / "resources"
 
 
 def _env_path(name: str, default: Path) -> Path:
@@ -32,7 +35,11 @@ def default_bronze_root() -> Path:
 
 
 def default_references() -> Path:
-    return _env_path("NLDAS_REFERENCES_DIR", DUY_ROOT / "src" / "references")
+    value = os.environ.get("NLDAS_REFERENCES_DIR")
+    if value:
+        return Path(value)
+    workspace = DUY_ROOT / "src" / "references"
+    return workspace if workspace.exists() else RESOURCES
 
 
 def roots() -> MedallionPaths:

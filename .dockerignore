@@ -3,9 +3,13 @@
 !README.md
 !requirements.txt
 !requirements-gis.txt
+!requirements-nldas.txt
+!requirements-dagster.txt
 !src/
 !src/**/*.py
 !src/**/*.json
+!src/**/*.parquet
+!src/**/*.csv
 !scripts/
 !scripts/**
 scripts/**/__pycache__

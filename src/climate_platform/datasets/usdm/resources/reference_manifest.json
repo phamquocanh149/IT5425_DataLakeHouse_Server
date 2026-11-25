@@ -1,0 +1,9 @@
+{
+  "description": "Frozen USDM 0.5-degree CONUS grid (grid, lon, lat) used when Bronze uploads carry no reference CSV. Drought labels are recomputed from Silver, never copied from this file.",
+  "grid_cells": 3259,
+  "source": "USDM_PQA_draftrepo/gold/data/usdmfinal.csv",
+  "source_sha256": "734b4178909a6dc8e27f43ef078f272cf4d19ba8c820340227eb680163608a4a",
+  "files": {
+    "grid_reference.csv": "a8fe5b7af8718b83cddd4c9e1db3c2ae564adb857b33407f58d028448065300c"
+  }
+}

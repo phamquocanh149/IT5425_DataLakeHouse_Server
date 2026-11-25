@@ -36,9 +36,9 @@ def station_alignment(stations, grid):
     return pd.DataFrame(rows, columns=["site_id", "grid_id", "distance_degrees_l1", "tie"])
 
 
-def silver(cfg, grid_path, wbd_path):
+def silver(cfg, grid_path, wbd_path, silver_root=None):
     root = Path(cfg.output)
-    silver_root = default_silver_root()
+    silver_root = Path(silver_root) if silver_root else default_silver_root()
     for source in (grid_path, wbd_path):
         if not source.is_file():
             raise FileNotFoundError(f"Required input missing: {source}")

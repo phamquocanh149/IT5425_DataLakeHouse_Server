@@ -1,6 +1,7 @@
 import json
 import sqlite3
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -84,6 +85,33 @@ def test_revision_preserves_history_and_old_replay(pipeline):
             "SELECT revision,is_current FROM observations ORDER BY revision"
         ).fetchall()
     assert [(r["revision"], r["is_current"]) for r in rows] == [(1, 0), (2, 1)]
+
+
+def test_auto_publish_reuses_existing_bronze_record(pipeline, monkeypatch):
+    source, output, shp = pipeline
+    existing = SimpleNamespace(file_id="file_client", revision=7, sha256=file_hash(shp))
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("auto publish must not register a replay observation")
+
+    monkeypatch.setattr(usdm.CatalogService, "register_upload", forbidden)
+    monkeypatch.setattr(usdm, "materialize_raw", forbidden)
+
+    report = usdm.run_pipeline(source, output, "fixture-python", records={"2020-01-07": existing})
+    assert report["succeeded"] == 1
+    assert (
+        usdm.run_pipeline(source, output, "fixture-python", records={"2020-01-07": existing})[
+            "skipped"
+        ]
+        == 1
+    )
+    with sqlite3.connect(output / "warehouse.sqlite3") as db:
+        assert db.execute("SELECT file_id, raw_sha256 FROM builds").fetchone() == (
+            "file_client",
+            existing.sha256,
+        )
+    with usdm.MetadataManager().connection() as db:
+        assert db.execute("SELECT count(*) AS n FROM observations").fetchone()["n"] == 0
 
 
 def test_quality_failure_then_retry(pipeline, monkeypatch):

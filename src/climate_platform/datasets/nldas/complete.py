@@ -19,16 +19,18 @@ def silver_complete_weeks(silver_root, product, *, grid_size):
 
     complete = set()
     directory = Path(silver_root) / product
-    columns = ["week_date", "quality_status"]
+    columns = ["week_date", "grid_id", "quality_status"]
     columns += [f"{name}_valid_hours" for name in VARIABLES[product]]
     for path in sorted(directory.glob("year=*/data.parquet")):
         frame = pd.read_parquet(path, columns=columns)
         for week, chunk in frame.groupby("week_date"):
             if len(chunk) != grid_size:
                 continue
-            if not (chunk["quality_status"] == "complete").all():
+            # Gold drops R25; Silver keeps it masked for reference-grid parity.
+            core = chunk[chunk["grid_id"] != "R25"]
+            if not (core["quality_status"] == "complete").all():
                 continue
-            if all((chunk[f"{name}_valid_hours"] == 168).all() for name in VARIABLES[product]):
+            if all((core[f"{name}_valid_hours"] == 168).all() for name in VARIABLES[product]):
                 complete.add(pd.Timestamp(week).date())
     return complete
 

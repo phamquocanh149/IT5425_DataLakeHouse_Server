@@ -31,7 +31,7 @@ Chi tiết bằng chứng xem [STAGE_5_CHECKPOINT.md](STAGE_5_CHECKPOINT.md) m�
 | ID | Mục tiêu dự kiến | Dependency / trạng thái |
 |---|---|---|
 | BL.N1 | Pipeline khoa học NOAA/USGS/NLDAS (mở rộng S3.04) | NOAA/USGS: auto-runner + processor đăng ký (xem S3.04, 2026-11-24); NLDAS processor còn TODO |
-| BL.N2 | Silver/Gold trên S3 thay vì chỉ local | Gắn với S3.08 / Stage 5 MinIO gate; TODO |
+| BL.N2 | Silver/Gold trên S3 thay vì chỉ local | PARTIAL 2026-11-25: NLDAS/NOAA/USDM auto-publish qua Dagster đã ghi Silver/Gold lên MinIO; USGS còn lỗi layout, gate image digest/restore vẫn mở |
 | BL.N3 | DuckDB/dbt, streaming broker/orchestrator đa nguồn | Không thêm chỉ để khớp tên dự án; cần scope+acceptance; TODO |
 
 Backlog không cấp quyền triển khai; mỗi mục chỉ chuyển sang stage khi người dùng giao rõ scope.

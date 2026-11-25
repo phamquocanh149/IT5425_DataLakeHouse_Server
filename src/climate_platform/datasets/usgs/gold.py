@@ -18,16 +18,15 @@ from climate_platform.datasets.usgs.paths import default_gold_root
 from climate_platform.medallion.io import write_json_atomic
 
 
-def gold(weekly_run):
+def gold(weekly_run, gold_root=None):
     wm = verified(weekly_run, expected_stage="weekly")
     sr = Path(wm["silver_run"])
     verified(sr, expected_stage="silver")
     grid, mapped, stations, alignment = [
         read(sr / f"{name}.parquet") for name in ["grid", "grid_huc", "stations", "station_grid"]
     ]
-    with stage(
-        default_gold_root(), "gold", [weekly_run / "manifest.json", sr / "manifest.json"]
-    ) as (
+    gold_root = Path(gold_root) if gold_root else default_gold_root()
+    with stage(gold_root, "gold", [weekly_run / "manifest.json", sr / "manifest.json"]) as (
         run,
         m,
     ):

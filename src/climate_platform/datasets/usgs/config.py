@@ -18,6 +18,8 @@ class Config:
     end: str = "2022-12-31"
     regions: tuple = tuple(f"{i:02d}" for i in range(1, 19))
     output: str = str(default_bronze_root())
+    silver_root: str | None = None
+    gold_root: str | None = None
     workers: int = 2
     requests_per_second: float = 0.25
     page_size: int = 1000

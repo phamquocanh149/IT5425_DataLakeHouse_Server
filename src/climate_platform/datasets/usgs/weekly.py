@@ -6,6 +6,8 @@ every baseline Tuesday, writing the Weekly Parquet partitions. No Gold logic, no
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -57,9 +59,10 @@ def weekly_station(daily, site):
     return result
 
 
-def weekly(silver_run):
+def weekly(silver_run, silver_root=None):
     verified(silver_run, expected_stage="silver")
-    with stage(default_silver_root(), "weekly", [silver_run / "manifest.json"]) as (run, m):
+    silver_root = Path(silver_root) if silver_root else default_silver_root()
+    with stage(silver_root, "weekly", [silver_run / "manifest.json"]) as (run, m):
         m["silver_run"] = str(silver_run.resolve())
         stations = read(silver_run / "stations.parquet")
         files = {}

@@ -15,15 +15,17 @@ from climate_platform.datasets.usgs.config import Config
 from climate_platform.datasets.usgs.gate import conditions_met
 from climate_platform.datasets.usgs.gold import gold
 from climate_platform.datasets.usgs.method import METHOD
-from climate_platform.datasets.usgs.paths import default_silver_root, default_gold_root
+from climate_platform.datasets.usgs.paths import resolve_roots
 from climate_platform.datasets.usgs.silver import silver
 from climate_platform.datasets.usgs.weekly import weekly
 from climate_platform.medallion.contracts import RunReport
 from climate_platform.medallion.runner import MedallionRunner
 
-SILVER_ROOT = default_silver_root()
-GOLD_ROOT = default_gold_root()
 ORDER = ("silver", "weekly", "gold")
+
+
+def _roots(cfg):
+    return resolve_roots(cfg)
 
 
 def _completed_runs(root, stage_name):
@@ -56,12 +58,13 @@ def plan(cfg, grid, wbd, overwrite=False) -> RunReport:
     artifacts; no Silver/Weekly/Gold output is written during planning.
     """
     readiness = conditions_met(cfg)
-    silver_run, _ = _latest(SILVER_ROOT, "silver") if readiness.ready else (None, None)
+    silver_root, gold_root = _roots(cfg)
+    silver_run, _ = _latest(silver_root, "silver") if readiness.ready else (None, None)
     weekly_run = gold_run = None
     if silver_run is not None:
-        weekly_run, _ = _latest(SILVER_ROOT, "weekly", silver_run=str(silver_run.resolve()))
+        weekly_run, _ = _latest(silver_root, "weekly", silver_run=str(silver_run.resolve()))
     if weekly_run is not None:
-        gold_run, _ = _latest(GOLD_ROOT, "gold", weekly_run=str(weekly_run.resolve()))
+        gold_run, _ = _latest(gold_root, "gold", weekly_run=str(weekly_run.resolve()))
 
     plan_silver = bool(readiness.ready and (overwrite or silver_run is None))
     plan_weekly = bool(readiness.ready and (plan_silver or weekly_run is None))
@@ -81,8 +84,8 @@ def plan(cfg, grid, wbd, overwrite=False) -> RunReport:
         },
         details={
             "bronze_root": str(Path(cfg.output).resolve()),
-            "silver_root": str(Path(SILVER_ROOT).resolve()),
-            "gold_root": str(Path(GOLD_ROOT).resolve()),
+            "silver_root": str(Path(silver_root).resolve()),
+            "gold_root": str(Path(gold_root).resolve()),
             "grid": str(grid),
             "wbd": str(wbd),
             "silver_run": str(silver_run) if silver_run is not None else None,
@@ -95,6 +98,7 @@ def plan(cfg, grid, wbd, overwrite=False) -> RunReport:
 def execute(cfg, grid, wbd, report: RunReport, log=print) -> RunReport:
     """Build planned stages under the shared runner lock; stop at the first failure."""
     lock_path = Path(cfg.output) / ".pipeline.lock"
+    silver_root, gold_root = _roots(cfg)
     state = {
         "silver": Path(report.details["silver_run"]) if report.details.get("silver_run") else None,
         "weekly": Path(report.details["weekly_run"]) if report.details.get("weekly_run") else None,
@@ -102,19 +106,19 @@ def execute(cfg, grid, wbd, report: RunReport, log=print) -> RunReport:
     }
 
     def run_silver():
-        state["silver"] = silver(cfg, Path(grid), Path(wbd))
+        state["silver"] = silver(cfg, Path(grid), Path(wbd), silver_root)
         return state["silver"]
 
     def run_weekly():
         if state["silver"] is None:
             raise RuntimeError("silver run unavailable")
-        state["weekly"] = weekly(state["silver"])
+        state["weekly"] = weekly(state["silver"], silver_root)
         return state["weekly"]
 
     def run_gold():
         if state["weekly"] is None:
             raise RuntimeError("weekly run unavailable")
-        state["gold"] = gold(state["weekly"])
+        state["gold"] = gold(state["weekly"], gold_root)
         return state["gold"]
 
     runner = MedallionRunner(

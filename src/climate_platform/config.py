@@ -71,6 +71,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     ENVIRONMENT: Environment = "development"
+    SERVICE_MODE: Literal["api", "worker"] = "api"
 
     # Server Network Settings
     SERVER_HOST: str = "127.0.0.1"
@@ -94,6 +95,8 @@ class Settings(BaseSettings):
     S3_BUCKET_WAREHOUSE: str = "climate-warehouse"
     S3_ACCESS_KEY: str = ""
     S3_SECRET_KEY: str = ""
+    MEDALLION_S3_ACCESS_KEY: str = ""
+    MEDALLION_S3_SECRET_KEY: str = ""
 
     SQLITE_BUSY_TIMEOUT_SECONDS: float = Field(0.5, gt=0, le=5)
 
@@ -139,6 +142,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_keys(self):
+        if self.SERVICE_MODE == "worker":
+            if not (self.MEDALLION_S3_ACCESS_KEY and self.MEDALLION_S3_SECRET_KEY):
+                raise ValueError("Medallion S3 credentials are required for worker mode")
+            return self
         if self.ENABLE_STATIC_KEYS and (
             not self.COLLECTOR_API_KEY.strip() or not self.ADMIN_API_KEY.strip()
         ):

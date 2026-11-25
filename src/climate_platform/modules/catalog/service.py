@@ -32,6 +32,9 @@ class CatalogService:
     def initialize(self):
         return self.repository.initialize()
 
+    def initialize_once(self):
+        return self.repository.initialize_once()
+
     def connection(self):
         return self.repository.connection()
 

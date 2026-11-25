@@ -44,6 +44,13 @@ data_lake/temp/*
 *.swp
 *.swo
 
+# macOS
+.DS_Store
+**/.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
 .ruff_cache/
 .test-runs/
 .smoke/

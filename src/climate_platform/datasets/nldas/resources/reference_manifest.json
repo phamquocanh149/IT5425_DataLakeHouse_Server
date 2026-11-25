@@ -1,0 +1,12 @@
+{
+  "description": "Frozen grid/calendar extracted once. USDM is not a runtime dependency.",
+  "grid_cells": 3259,
+  "weeks": 130,
+  "start": "2020-01-07",
+  "end": "2022-06-28",
+  "source_sha256": "5fb2ffd250c7a77622cd9a569c1b7389038aab1ecf955503d16f3ac37e4e1636",
+  "files": {
+    "grid_reference.parquet": "e495feddde5842d99ad0df6144b8aa81f2b81920710df3ee2f74c23bc92ab85d",
+    "week_dates.csv": "a124a7753e2dd4ded93e1f8064c45f26e384b43e84087284459629c11d801281"
+  }
+}

@@ -72,3 +72,10 @@ def prepare_portal(argv=None):
     from scripts.portal.prepare_portal import main
 
     return main(argv)
+
+
+def medallion_publish(argv=None):
+    """``climate-medallion-publish``: poll Bronze and publish Silver/Gold for every source."""
+    from climate_platform.modules.processing.publish_worker import main
+
+    return main(argv)

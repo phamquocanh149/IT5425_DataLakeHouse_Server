@@ -42,6 +42,8 @@ dev = ["pytest==8.4.2", "ruff==0.14.5"]
 climate-platform = "climate_platform.cli:serve"
 # GIS worker used by the USDM processor (installed, no source tree required).
 climate-usdm-worker = "climate_platform.cli:usdm_worker"
+# Poll Bronze and auto-publish Silver/Gold layers for every dataset to MinIO.
+climate-medallion-publish = "climate_platform.cli:medallion_publish"
 # Offline USDM replay into Bronze/Silver/Gold.
 climate-usdm-replay = "climate_platform.cli:usdm_replay"
 
@@ -55,7 +57,11 @@ where = ["src"]
 climate_platform = [
     "datasets/usdm/resources/*.py",
     "datasets/usdm/resources/*.json",
+    "datasets/usdm/resources/*.csv",
     "datasets/usdm/resources/historical_recipes/*.py",
+    "datasets/nldas/resources/*.parquet",
+    "datasets/nldas/resources/*.csv",
+    "datasets/nldas/resources/*.json",
 ]
 
 [tool.pytest.ini_options]

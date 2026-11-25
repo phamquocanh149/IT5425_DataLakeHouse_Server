@@ -35,6 +35,21 @@ mc anonymous get lake/climate-bronze
 mc ls --recursive lake/climate-bronze
 ```
 
+This runs inside the Linux `mc` container, so no host shell port is needed. To (re)run
+bucket/user provisioning from Windows, use the wrappers instead of invoking the shell
+script on the host:
+
+```powershell
+scripts\ops\minio-init.bat
+# or
+powershell -File scripts\ops\minio-init.ps1
+```
+
+`scripts/ops/minio-init.sh` is mounted read-only into the `mc` container and executed with
+`/bin/sh`; it is never run directly by the host shell. In Git Bash, `--entrypoint /bin/sh`
+can be rewritten by MSYS path conversion; prefix the command with `MSYS_NO_PATHCONV=1` or use
+the `.bat`/`.ps1` wrappers above.
+
 The initializer is idempotent. All four buckets are private and versioned. The dedicated
 ingestion identity can list Bronze and GET/PUT only the four supported source prefixes;
 it cannot delete raw or access Silver/Gold/Warehouse. Root credentials are not passed to
@@ -75,8 +90,8 @@ or path characters cannot escape a partition), revision and full content SHA-256
 
 ```text
 climate-bronze/source=usdm/year=2021/date=2021-06-22/dataset=<id-hash>/revision=1/sha256=<hash>/raw.zip
-climate-silver/source=usdm/year=2021/part-0001.parquet       (reserved)
-climate-gold/dataset=fct_drought_weekly/year=2021/...        (reserved)
+climate-silver/source=usdm/week_date=2021-06-22/build=<hash>/<sha256>.parquet
+climate-gold/source=usdm/week_date=2021-06-22/build=<hash>/<sha256>.csv
 climate-warehouse/{exports,snapshots,dbt-artifacts}/         (reserved)
 ```
 

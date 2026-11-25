@@ -20,7 +20,11 @@ source shapefile sidecars (read-only)
 ```
 
 Gold grain: một `(build_id, grid)` cho một tuần; cột `time,grid,lon,lat,drought`.
-Grid lấy duy nhất từ tọa độ CSV tham chiếu, kiểm tra uniqueness và bounds. Drought
+Grid lấy từ tọa độ CSV tham chiếu: `usdmfinal.csv` do Client upload (hoặc tệp CSV có
+`grid,lon,lat` trong ZIP) được ưu tiên; nếu Bronze không có, pipeline tự dùng grid
+đóng gói sẵn `datasets/usdm/resources/grid_reference.csv` (3.259 ô, cùng lưới với tham
+chiếu NLDAS) nên luồng tự động không phụ thuộc upload tham chiếu. Grid luôn được kiểm tra
+uniqueness và bounds. Drought
 được tính lại từ Silver, không sao chép nhãn CSV. `0` = không hạn, `D0` = abnormally dry.
 `within` loại điểm đúng trên biên; overlap lấy DM cao nhất. Counts là số ô tâm lưới,
 không phải tổng diện tích. Không tái tạo `A.csv` hoặc RDA vì chúng không cần cho mart này.

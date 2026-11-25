@@ -148,6 +148,19 @@ docker compose logs --tail 100 api minio minio-init
 docker compose exec -T api python scripts/migration/reconcile_storage.py --checksum
 ```
 
+Chạy lại/di trú `minio-init` (bốn bucket private, versioned) trên Windows:
+
+```powershell
+scripts\ops\minio-init.bat
+# hoặc
+powershell -File scripts\ops\minio-init.ps1
+```
+
+`scripts/ops/minio-init.sh` **không** chạy trực tiếp trên host: Compose mount nó read-only vào
+container `mc` (Linux) và chạy bằng `/bin/sh`. Hai file `.bat`/`.ps1` ở trên chỉ gọi lại đúng
+dịch vụ `minio-init` qua Docker Compose, nên chạy được trên Windows và cả trong Git Bash (không
+bị MSYS đổi đường dẫn `/bin/sh`).
+
 ## 4. Kết nối hai máy bằng VS Code Dev Tunnels
 
 Mặc định API chỉ bind `127.0.0.1:8000`, nên máy khác không truy cập trực tiếp. Để demo khác mạng mà không cài Tailscale:

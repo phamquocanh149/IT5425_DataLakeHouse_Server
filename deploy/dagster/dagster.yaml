@@ -1,0 +1,15 @@
+telemetry:
+  enabled: false
+storage:
+  sqlite:
+    base_dir: /dagster-home/storage
+run_coordinator:
+  module: dagster.core.run_coordinator
+  class: QueuedRunCoordinator
+  config:
+    max_concurrent_runs: 2
+run_monitoring:
+  enabled: true
+  start_timeout_seconds: 120
+  cancel_timeout_seconds: 120
+  poll_interval_seconds: 30
